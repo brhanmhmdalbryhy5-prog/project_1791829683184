@@ -264,7 +264,7 @@ class AppData extends ChangeNotifier {
     return sorted.first;
   }
 
-  // ✅ جديد: إيجاد أيقونة أي حساب من قائمة players المحمّلة
+  // ✅ إيجاد أيقونة أي حساب من قائمة players المحمّلة
   String avatarForAccount(dynamic accountId) {
     if (accountId == null) return '';
     final id = toInt(accountId);
@@ -277,7 +277,7 @@ class AppData extends ChangeNotifier {
     return '';
   }
 
-  // ✅ جديد: إيجاد أيقونة بالاسم (للتعليقات القديمة التي لا تخزّن account_id)
+  // ✅ إيجاد أيقونة بالاسم (للتعليقات القديمة)
   String avatarForName(String name) {
     final n = name.trim().toLowerCase();
     if (n.isEmpty) return '';
@@ -507,7 +507,7 @@ class AppData extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ✅ جديد: تحديث قائمة اللاعبين فقط (نستخدمها في الدردشة لالتقاط الأيقونات الجديدة)
+  // ✅ تحديث قائمة اللاعبين فقط (لتحديث الأيقونات)
   Future<void> loadPlayers() async {
     try {
       final result = await supabase
@@ -1130,23 +1130,39 @@ class AppData extends ChangeNotifier {
       debugPrint('Load gallery error: $e');
       gallery = [];
     }
-    // ✅ مهم جدًا: إعلام الواجهة بعد التحديث
     notifyListeners();
   }
 
-  Future<bool> addGalleryImage(
+  // ✅ جديد: ترجع String? — null عند النجاح، نص الخطأ عند الفشل
+  Future<String?> addGalleryImage(
     File imageFile, {
     String caption = '',
   }) async {
     if (currentAccountId == null) {
-      debugPrint('Add gallery error: currentAccountId == null');
-      return false;
+      return 'لم يتم تسجيل الدخول.';
     }
+
+    // التحقق من وجود الملف وحجمه
+    try {
+      final exists = await imageFile.exists();
+      if (!exists) {
+        return 'الملف غير موجود على الجهاز.';
+      }
+      final fileSize = await imageFile.length();
+      if (fileSize == 0) {
+        return 'الملف فارغ.';
+      }
+      if (fileSize > 10 * 1024 * 1024) {
+        return 'حجم الصورة كبير (${(fileSize / 1024 / 1024).toStringAsFixed(1)}MB). الحد 10MB.';
+      }
+    } catch (_) {}
 
     try {
       final extension = _safeExtension(imageFile.path);
       final path =
           'gallery/${currentAccountId}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+
+      debugPrint('GALLERY: uploading to $path');
 
       // 1) رفع الصورة
       await supabase.storage.from('news-images').upload(
@@ -1155,8 +1171,12 @@ class AppData extends ChangeNotifier {
             fileOptions: const FileOptions(upsert: false),
           );
 
+      debugPrint('GALLERY: upload OK');
+
       final imageUrl =
           supabase.storage.from('news-images').getPublicUrl(path);
+
+      debugPrint('GALLERY: public URL = $imageUrl');
 
       // 2) إدخال السجل
       await supabase.from('gallery').insert({
@@ -1168,15 +1188,22 @@ class AppData extends ChangeNotifier {
         'caption': caption.trim(),
       });
 
-      // 3) إعادة التحميل + إعلام الواجهة + الحفظ في الكاش
+      debugPrint('GALLERY: insert OK');
+
+      // 3) إعادة التحميل
       await loadGallery();
       await _saveAllToCache();
       notifyListeners();
-      return true;
-    } catch (e, st) {
-      debugPrint('Add gallery error: $e');
-      debugPrint('Add gallery stack: $st');
-      return false;
+      return null; // نجاح
+    } on StorageException catch (e) {
+      debugPrint('GALLERY storage error: ${e.message}');
+      return 'فشل رفع الصورة: ${e.message}';
+    } on PostgrestException catch (e) {
+      debugPrint('GALLERY db error: ${e.message}');
+      return 'فشل حفظ السجل: ${e.message}';
+    } catch (e) {
+      debugPrint('GALLERY unknown error: $e');
+      return 'خطأ غير متوقع: $e';
     }
   }
 
@@ -1219,20 +1246,17 @@ class AppData extends ChangeNotifier {
           .update({'avatar_url': url})
           .eq('account_id', currentAccountId!);
 
-      // تحديث محلي فوري
       for (final player in players) {
         if (toInt(player['account_id']) == currentAccountId) {
           player['avatar_url'] = url;
         }
       }
 
-      // ✅ حفظ في الكاش حتى لا يعود القديم بعد إعادة التشغيل
       await _saveAllToCache();
       notifyListeners();
       return true;
-    } catch (e, st) {
+    } catch (e) {
       debugPrint('Update avatar error: $e');
-      debugPrint('Update avatar stack: $st');
       return false;
     }
   }
@@ -3309,7 +3333,7 @@ class ServiceTile extends StatelessWidget {
 }
 
 // =======================================================
-// ✅ معرض الصور - مع AnimatedBuilder لضمان التحديث الفوري
+// ✅ معرض الصور - مع رسالة خطأ حقيقية
 // =======================================================
 
 class GalleryPage extends StatefulWidget {
@@ -3361,8 +3385,17 @@ class _GalleryPageState extends State<GalleryPage> {
       ),
     );
 
-    if (confirm != true) return;
-    if (!mounted) return;
+    if (confirm != true) {
+      captionController.dispose();
+      return;
+    }
+    if (!mounted) {
+      captionController.dispose();
+      return;
+    }
+
+    // احتفظ بمرجع للـ messenger قبل فتح الديالوج
+    final messenger = ScaffoldMessenger.of(context);
 
     // إظهار مؤشر التحميل
     showDialog(
@@ -3373,17 +3406,33 @@ class _GalleryPageState extends State<GalleryPage> {
       ),
     );
 
-    final ok = await widget.data.addGalleryImage(
+    final errorMessage = await widget.data.addGalleryImage(
       File(picked.path),
       caption: captionController.text,
     );
 
-    if (!mounted) return;
-    Navigator.pop(context); // إغلاق المؤشر
+    if (!mounted) {
+      captionController.dispose();
+      return;
+    }
 
-    showSnack(
-      context,
-      ok ? 'تم نشر الصورة.' : 'تعذر نشر الصورة. تحقق من الاتصال أو الصلاحيات.',
+    // إغلاق مؤشر التحميل
+    Navigator.of(context, rootNavigator: true).pop();
+
+    // ✅ اعرض الرسالة الحقيقية
+    final text = errorMessage == null
+        ? '✅ تم نشر الصورة.'
+        : '❌ $errorMessage';
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(text),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: errorMessage == null
+            ? Colors.green.shade800
+            : Colors.red.shade800,
+        duration: const Duration(seconds: 5),
+      ),
     );
 
     captionController.dispose();
@@ -5616,7 +5665,7 @@ class _ManageImportantNewsPageState
 }
 
 // =======================================================
-// ✅ إدارة معرض الصور - مع AnimatedBuilder
+// إدارة معرض الصور
 // =======================================================
 
 class ManageGalleryPage extends StatelessWidget {
