@@ -264,6 +264,31 @@ class AppData extends ChangeNotifier {
     return sorted.first;
   }
 
+  // ✅ جديد: إيجاد أيقونة أي حساب من قائمة players المحمّلة
+  String avatarForAccount(dynamic accountId) {
+    if (accountId == null) return '';
+    final id = toInt(accountId);
+    if (id <= 0) return '';
+    for (final p in players) {
+      if (toInt(p['account_id']) == id) {
+        return clean(p['avatar_url']);
+      }
+    }
+    return '';
+  }
+
+  // ✅ جديد: إيجاد أيقونة بالاسم (للتعليقات القديمة التي لا تخزّن account_id)
+  String avatarForName(String name) {
+    final n = name.trim().toLowerCase();
+    if (n.isEmpty) return '';
+    for (final p in players) {
+      if (clean(p['name']).trim().toLowerCase() == n) {
+        return clean(p['avatar_url']);
+      }
+    }
+    return '';
+  }
+
   Future<void> setAdminSession(bool value) async {
     _isAdmin = value;
 
@@ -369,6 +394,7 @@ class AppData extends ChangeNotifier {
 
     notifyListeners();
   }
+
   // ===================== تحميل البيانات =====================
 
   Future<void> loadFromCache() async {
@@ -479,6 +505,22 @@ class AppData extends ChangeNotifier {
 
     loading = false;
     notifyListeners();
+  }
+
+  // ✅ جديد: تحديث قائمة اللاعبين فقط (نستخدمها في الدردشة لالتقاط الأيقونات الجديدة)
+  Future<void> loadPlayers() async {
+    try {
+      final result = await supabase
+          .from('players')
+          .select()
+          .order('points', ascending: false);
+
+      players = List<Map<String, dynamic>>.from(result);
+      await LocalCache.saveList('players', players);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Load players error: $e');
+    }
   }
 
   // ===================== الخبر المهم =====================
@@ -1057,7 +1099,7 @@ class AppData extends ChangeNotifier {
     if (!_isAdmin) return null;
 
     try {
-      final extension = file.path.split('.').last.toLowerCase();
+      final extension = _safeExtension(file.path);
       final path =
           'quiz/${DateTime.now().millisecondsSinceEpoch}.$extension';
 
@@ -1085,21 +1127,28 @@ class AppData extends ChangeNotifier {
 
       gallery = List<Map<String, dynamic>>.from(result);
     } catch (e) {
+      debugPrint('Load gallery error: $e');
       gallery = [];
     }
+    // ✅ مهم جدًا: إعلام الواجهة بعد التحديث
+    notifyListeners();
   }
 
   Future<bool> addGalleryImage(
     File imageFile, {
     String caption = '',
   }) async {
-    if (currentAccountId == null) return false;
+    if (currentAccountId == null) {
+      debugPrint('Add gallery error: currentAccountId == null');
+      return false;
+    }
 
     try {
-      final extension = imageFile.path.split('.').last.toLowerCase();
+      final extension = _safeExtension(imageFile.path);
       final path =
-          'gallery/${DateTime.now().millisecondsSinceEpoch}.$extension';
+          'gallery/${currentAccountId}_${DateTime.now().millisecondsSinceEpoch}.$extension';
 
+      // 1) رفع الصورة
       await supabase.storage.from('news-images').upload(
             path,
             imageFile,
@@ -1109,6 +1158,7 @@ class AppData extends ChangeNotifier {
       final imageUrl =
           supabase.storage.from('news-images').getPublicUrl(path);
 
+      // 2) إدخال السجل
       await supabase.from('gallery').insert({
         'account_id': currentAccountId,
         'user_name': currentUserName.trim().isEmpty
@@ -1118,12 +1168,14 @@ class AppData extends ChangeNotifier {
         'caption': caption.trim(),
       });
 
+      // 3) إعادة التحميل + إعلام الواجهة + الحفظ في الكاش
       await loadGallery();
       await _saveAllToCache();
       notifyListeners();
       return true;
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('Add gallery error: $e');
+      debugPrint('Add gallery stack: $st');
       return false;
     }
   }
@@ -1138,6 +1190,7 @@ class AppData extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      debugPrint('Delete gallery error: $e');
       return false;
     }
   }
@@ -1148,7 +1201,7 @@ class AppData extends ChangeNotifier {
     if (currentAccountId == null) return false;
 
     try {
-      final extension = imageFile.path.split('.').last.toLowerCase();
+      final extension = _safeExtension(imageFile.path);
       final path =
           'avatars/${currentAccountId}_${DateTime.now().millisecondsSinceEpoch}.$extension';
 
@@ -1166,16 +1219,20 @@ class AppData extends ChangeNotifier {
           .update({'avatar_url': url})
           .eq('account_id', currentAccountId!);
 
+      // تحديث محلي فوري
       for (final player in players) {
         if (toInt(player['account_id']) == currentAccountId) {
           player['avatar_url'] = url;
         }
       }
 
+      // ✅ حفظ في الكاش حتى لا يعود القديم بعد إعادة التشغيل
+      await _saveAllToCache();
       notifyListeners();
       return true;
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('Update avatar error: $e');
+      debugPrint('Update avatar stack: $st');
       return false;
     }
   }
@@ -1193,8 +1250,7 @@ class AppData extends ChangeNotifier {
       String? imageUrl;
 
       if (imageFile != null) {
-        final extension =
-            imageFile.path.split('.').last.toLowerCase();
+        final extension = _safeExtension(imageFile.path);
         final path =
             'news_${DateTime.now().millisecondsSinceEpoch}.$extension';
 
@@ -1522,7 +1578,7 @@ class AppData extends ChangeNotifier {
     String folder,
   ) async {
     try {
-      final extension = file.path.split('.').last.toLowerCase();
+      final extension = _safeExtension(file.path);
       final path =
           '$folder/${DateTime.now().millisecondsSinceEpoch}.$extension';
 
@@ -1534,9 +1590,20 @@ class AppData extends ChangeNotifier {
 
       return supabase.storage.from('news-images').getPublicUrl(path);
     } catch (e) {
+      debugPrint('Upload general image error: $e');
       return null;
     }
   }
+}
+
+// =======================================================
+// ✅ دالة مساعدة آمنة لاستخراج امتداد الملف
+// =======================================================
+String _safeExtension(String path) {
+  final raw = path.split('.').last.toLowerCase();
+  const allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'bmp'];
+  if (raw.length <= 5 && allowed.contains(raw)) return raw;
+  return 'jpg';
 }
 // =======================================================
 // مدير التخزين المحلي
@@ -1997,6 +2064,25 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int index = 0;
+  Timer? _playersRefreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ تحديث قائمة اللاعبين كل 30 ثانية لالتقاط أيقونات جديدة
+    _playersRefreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) async {
+        await widget.data.loadPlayers();
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _playersRefreshTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2828,7 +2914,7 @@ class NewsCard extends StatelessWidget {
 }
 
 // =======================================================
-// التعليقات (تبقى كما هي)
+// ✅ التعليقات - مع أيقونة المستخدم
 // =======================================================
 
 class CommentsPage extends StatefulWidget {
@@ -2857,6 +2943,8 @@ class _CommentsPageState extends State<CommentsPage> {
   }
 
   Future<void> load() async {
+    // ✅ حدّث قائمة اللاعبين أولاً لضمان أحدث الأيقونات
+    await widget.data.loadPlayers();
     final result = await widget.data.getComments(widget.newsId);
     if (!mounted) return;
 
@@ -2893,6 +2981,22 @@ class _CommentsPageState extends State<CommentsPage> {
     super.dispose();
   }
 
+  /// ✅ دالة مساعدة تبني أيقونة مع صورة أو حرف بديل
+  Widget _buildAvatar(String userName) {
+    final url = widget.data.avatarForName(userName);
+    if (url.isNotEmpty) {
+      return CircleAvatar(
+        backgroundColor: AppColors.gold,
+        backgroundImage: NetworkImage(url),
+        onBackgroundImageError: (_, __) {},
+      );
+    }
+    return const CircleAvatar(
+      backgroundColor: AppColors.gold,
+      child: Icon(Icons.person, color: Colors.black),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2910,32 +3014,32 @@ class _CommentsPageState extends State<CommentsPage> {
                     ? const Center(
                         child: Text('لا توجد تعليقات بعد.'),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: comments.length,
-                        itemBuilder: (_, index) {
-                          final item = comments[index];
+                    : AnimatedBuilder(
+                        animation: widget.data,
+                        builder: (context, _) {
+                          return ListView.builder(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: comments.length,
+                            itemBuilder: (_, index) {
+                              final item = comments[index];
+                              final name = clean(item['user_name']);
 
-                          return Card(
-                            child: ListTile(
-                              leading: const CircleAvatar(
-                                backgroundColor: AppColors.gold,
-                                child: Icon(
-                                  Icons.person,
-                                  color: Colors.black,
+                              return Card(
+                                child: ListTile(
+                                  leading: _buildAvatar(name),
+                                  title: Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.gold,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    clean(item['comment_text']),
+                                  ),
                                 ),
-                              ),
-                              title: Text(
-                                clean(item['user_name']),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.gold,
-                                ),
-                              ),
-                              subtitle: Text(
-                                clean(item['comment_text']),
-                              ),
-                            ),
+                              );
+                            },
                           );
                         },
                       ),
@@ -3028,9 +3132,8 @@ class NotificationsPage extends StatelessWidget {
     );
   }
 }
-
 // =======================================================
-// الخدمات (بدون تقييمات + مع معرض الصور)
+// الخدمات
 // =======================================================
 
 class ServicesPage extends StatelessWidget {
@@ -3048,7 +3151,6 @@ class ServicesPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ⭐ معرض الصور (بدلاً من التقييمات)
           ServiceTile(
             icon: Icons.photo_library,
             title: 'معرض الصور',
@@ -3205,8 +3307,9 @@ class ServiceTile extends StatelessWidget {
     );
   }
 }
+
 // =======================================================
-// معرض الصور - بإطار متحف ذهبي
+// ✅ معرض الصور - مع AnimatedBuilder لضمان التحديث الفوري
 // =======================================================
 
 class GalleryPage extends StatefulWidget {
@@ -3259,7 +3362,9 @@ class _GalleryPageState extends State<GalleryPage> {
     );
 
     if (confirm != true) return;
+    if (!mounted) return;
 
+    // إظهار مؤشر التحميل
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -3274,11 +3379,11 @@ class _GalleryPageState extends State<GalleryPage> {
     );
 
     if (!mounted) return;
-    Navigator.pop(context);
+    Navigator.pop(context); // إغلاق المؤشر
 
     showSnack(
       context,
-      ok ? 'تم نشر الصورة.' : 'تعذر نشر الصورة.',
+      ok ? 'تم نشر الصورة.' : 'تعذر نشر الصورة. تحقق من الاتصال أو الصلاحيات.',
     );
 
     captionController.dispose();
@@ -3294,7 +3399,6 @@ class _GalleryPageState extends State<GalleryPage> {
             onPressed: () async {
               await playClickSound();
               await widget.data.loadGallery();
-              if (mounted) setState(() {});
             },
             icon: const Icon(Icons.refresh),
           ),
@@ -3308,57 +3412,63 @@ class _GalleryPageState extends State<GalleryPage> {
         icon: const Icon(Icons.add_a_photo),
         label: const Text('أضف صورة'),
       ),
-      body: RefreshIndicator(
-        onRefresh: widget.data.loadGallery,
-        color: AppColors.gold,
-        child: widget.data.gallery.isEmpty
-            ? ListView(
-                children: const [
-                  SizedBox(height: 200),
-                  Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'لا توجد صور بعد.\nكن أول من يشارك صورة!',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ),
-                ],
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: widget.data.gallery.length,
-                itemBuilder: (_, index) {
-                  final item = widget.data.gallery[index];
-
-                  return _MuseumFrame(
-                    imageUrl: clean(item['image_url']),
-                    userName: clean(item['user_name']),
-                    caption: clean(item['caption']),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => GalleryImagePage(
-                            data: widget.data,
-                            item: item,
+      // ✅ AnimatedBuilder لضمان إعادة البناء عند notifyListeners()
+      body: AnimatedBuilder(
+        animation: widget.data,
+        builder: (context, _) {
+          return RefreshIndicator(
+            onRefresh: widget.data.loadGallery,
+            color: AppColors.gold,
+            child: widget.data.gallery.isEmpty
+                ? ListView(
+                    children: const [
+                      SizedBox(height: 200),
+                      Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'لا توجد صور بعد.\nكن أول من يشارك صورة!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 16),
                           ),
                         ),
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: widget.data.gallery.length,
+                    itemBuilder: (_, index) {
+                      final item = widget.data.gallery[index];
+
+                      return _MuseumFrame(
+                        imageUrl: clean(item['image_url']),
+                        userName: clean(item['user_name']),
+                        caption: clean(item['caption']),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => GalleryImagePage(
+                                data: widget.data,
+                                item: item,
+                              ),
+                            ),
+                          );
+                        },
                       );
                     },
-                  );
-                },
-              ),
+                  ),
+          );
+        },
       ),
     );
   }
 }
 
-/// =======================================================
-/// إطار المتحف - إطار ذهبي فاخر
-/// =======================================================
+// =======================================================
+// إطار المتحف - إطار ذهبي فاخر
+// =======================================================
 class _MuseumFrame extends StatelessWidget {
   final String imageUrl;
   final String userName;
@@ -3476,9 +3586,9 @@ class _MuseumFrame extends StatelessWidget {
   }
 }
 
-/// =======================================================
-/// عرض الصورة بكامل الشاشة
-/// =======================================================
+// =======================================================
+// عرض الصورة بكامل الشاشة
+// =======================================================
 class GalleryImagePage extends StatelessWidget {
   final AppData data;
   final Map<String, dynamic> item;
@@ -4079,7 +4189,7 @@ class QuizResultPage extends StatelessWidget {
 }
 
 // =======================================================
-// الدردشة العامة
+// ✅ الدردشة العامة - مع أيقونة المستخدم
 // =======================================================
 
 class PublicChatPage extends StatefulWidget {
@@ -4104,13 +4214,24 @@ class _PublicChatPageState extends State<PublicChatPage> {
   void initState() {
     super.initState();
 
+    // ✅ أول تحميل فوري
+    _refreshAll();
+
+    // ✅ تحديث الرسائل + اللاعبين (للأيقونات) كل 5 ثوان
     timer = Timer.periodic(
       const Duration(seconds: 5),
       (_) async {
         await widget.data.loadPublicChat();
+        await widget.data.loadPlayers(); // ← لجلب الأيقونات الجديدة
         if (mounted) setState(() {});
       },
     );
+  }
+
+  Future<void> _refreshAll() async {
+    await widget.data.loadPublicChat();
+    await widget.data.loadPlayers();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -4165,6 +4286,34 @@ class _PublicChatPageState extends State<PublicChatPage> {
     }
   }
 
+  /// ✅ بناء أيقونة مستخدم الرسالة
+  Widget _buildChatAvatar(Map<String, dynamic> item) {
+    final accountId = item['account_id'];
+    final name = clean(item['user_name']);
+
+    // أولاً: حاول بـ account_id
+    String url = widget.data.avatarForAccount(accountId);
+    // إن لم يوجد، جرّب بالاسم
+    if (url.isEmpty) {
+      url = widget.data.avatarForName(name);
+    }
+
+    if (url.isNotEmpty) {
+      return CircleAvatar(
+        radius: 20,
+        backgroundColor: AppColors.gold,
+        backgroundImage: NetworkImage(url),
+        onBackgroundImageError: (_, __) {},
+      );
+    }
+
+    return const CircleAvatar(
+      radius: 20,
+      backgroundColor: AppColors.gold,
+      child: Icon(Icons.person, color: Colors.black, size: 22),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -4174,154 +4323,172 @@ class _PublicChatPageState extends State<PublicChatPage> {
           IconButton(
             onPressed: () async {
               await playClickSound();
-              await widget.data.loadPublicChat();
-              if (mounted) setState(() {});
+              await _refreshAll();
             },
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: widget.data.publicChat.isEmpty
-                ? const Center(child: Text('لا توجد رسائل بعد.'))
-                : ListView.builder(
-                    reverse: true,
-                    padding: const EdgeInsets.all(12),
-                    itemCount: widget.data.publicChat.length,
-                    itemBuilder: (_, index) {
-                      final item = widget.data.publicChat[index];
-                      final mine = clean(item['account_id']) ==
-                          clean(widget.data.currentAccountId);
-                      final messageImage = clean(item['image_url']);
-                      final messageText = clean(item['message']);
+      body: AnimatedBuilder(
+        animation: widget.data,
+        builder: (context, _) {
+          return Column(
+            children: [
+              Expanded(
+                child: widget.data.publicChat.isEmpty
+                    ? const Center(child: Text('لا توجد رسائل بعد.'))
+                    : ListView.builder(
+                        reverse: true,
+                        padding: const EdgeInsets.all(12),
+                        itemCount: widget.data.publicChat.length,
+                        itemBuilder: (_, index) {
+                          final item = widget.data.publicChat[index];
+                          final mine = toInt(item['account_id']) ==
+                              widget.data.currentAccountId;
+                          final messageImage = clean(item['image_url']);
+                          final messageText = clean(item['message']);
 
-                      return Align(
-                        alignment: mine
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  clean(item['user_name']),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.gold,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                if (messageImage.isNotEmpty)
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.only(bottom: 6),
-                                    child: ClipRRect(
-                                      borderRadius:
-                                          BorderRadius.circular(12),
-                                      child: Image.network(
-                                        messageImage,
-                                        width: 200,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) {
-                                          return const SizedBox(
-                                            width: 200,
-                                            height: 100,
-                                            child: Center(
-                                              child: Icon(
-                                                Icons.broken_image,
-                                                size: 40,
-                                                color: AppColors.gold,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
+                          return Align(
+                            alignment: mine
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            child: Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    // ✅ صف يحتوي الأيقونة + الاسم
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _buildChatAvatar(item),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          clean(item['user_name']),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.gold,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                if (messageText.isNotEmpty)
-                                  Text(messageText),
-                                if (widget.data.isAdmin)
-                                  IconButton(
-                                    onPressed: () async {
-                                      await playClickSound();
-                                      await widget.data
-                                          .deletePublicChat(item['id']);
-                                      if (mounted) setState(() {});
-                                    },
-                                    icon: const Icon(Icons.delete),
-                                  ),
-                              ],
+                                    const SizedBox(height: 6),
+                                    if (messageImage.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                            bottom: 6),
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          child: Image.network(
+                                            messageImage,
+                                            width: 200,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) {
+                                              return const SizedBox(
+                                                width: 200,
+                                                height: 100,
+                                                child: Center(
+                                                  child: Icon(
+                                                    Icons.broken_image,
+                                                    size: 40,
+                                                    color: AppColors.gold,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    if (messageText.isNotEmpty)
+                                      Text(messageText),
+                                    if (widget.data.isAdmin)
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: IconButton(
+                                          onPressed: () async {
+                                            await playClickSound();
+                                            await widget.data
+                                                .deletePublicChat(
+                                                    item['id']);
+                                          },
+                                          icon: const Icon(
+                                            Icons.delete,
+                                            size: 20,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             ),
+                          );
+                        },
+                      ),
+              ),
+              if (selectedImage != null)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.image, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'صورة جاهزة للإرسال',
+                          style: TextStyle(
+                            color: AppColors.gold.withOpacity(0.7),
                           ),
                         ),
-                      );
-                    },
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          setState(() {
+                            selectedImage = null;
+                          });
+                        },
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
                   ),
-          ),
-          if (selectedImage != null)
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                children: [
-                  const Icon(Icons.image, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'صورة جاهزة للإرسال',
-                      style: TextStyle(
-                        color: AppColors.gold.withOpacity(0.7),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: pickImage,
+                      icon: const Icon(Icons.image),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        decoration: const InputDecoration(
+                          labelText: 'اكتب رسالتك',
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        selectedImage = null;
-                      });
-                    },
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: pickImage,
-                  icon: const Icon(Icons.image),
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    decoration: const InputDecoration(
-                      labelText: 'اكتب رسالتك',
+                    IconButton(
+                      onPressed: sending ? null : send,
+                      icon: sending
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.gold,
+                              ),
+                            )
+                          : const Icon(Icons.send),
                     ),
-                  ),
+                  ],
                 ),
-                IconButton(
-                  onPressed: sending ? null : send,
-                  icon: sending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.gold,
-                          ),
-                        )
-                      : const Icon(Icons.send),
-                ),
-              ],
-            ),
-          ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -4891,7 +5058,7 @@ class _SendMessagePageState extends State<SendMessagePage> {
 }
 
 // =======================================================
-// الإعدادات (مع تغيير الأيقونة)
+// ✅ الإعدادات - مع AnimatedBuilder لتحديث الأيقونة فورًا
 // =======================================================
 
 class SettingsPage extends StatelessWidget {
@@ -4948,127 +5115,133 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final badge = data.currentBadge;
-    final avatar = data.currentAvatar;
+    // ✅ AnimatedBuilder لإعادة البناء عند تغيّر الأيقونة أو الاسم أو النقاط
+    return AnimatedBuilder(
+      animation: data,
+      builder: (context, _) {
+        final badge = data.currentBadge;
+        final avatar = data.currentAvatar;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('الإعدادات')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                children: [
-                  Stack(
+        return Scaffold(
+          appBar: AppBar(title: const Text('الإعدادات')),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
                     children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.gold,
-                            width: 3,
-                          ),
-                        ),
-                        child: CircleAvatar(
-                          radius: 45,
-                          backgroundColor: AppColors.inputBlack,
-                          backgroundImage: avatar.isNotEmpty
-                              ? NetworkImage(avatar)
-                              : null,
-                          child: avatar.isEmpty
-                              ? const Icon(
-                                  Icons.person,
-                                  size: 45,
-                                  color: AppColors.gold,
-                                )
-                              : null,
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: GestureDetector(
-                          onTap: () => _pickAvatar(context),
-                          child: Container(
+                      Stack(
+                        children: [
+                          Container(
                             decoration: BoxDecoration(
-                              color: AppColors.gold,
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: AppColors.black,
-                                width: 2,
+                                color: AppColors.gold,
+                                width: 3,
                               ),
                             ),
-                            padding: const EdgeInsets.all(8),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              size: 20,
-                              color: Colors.black,
+                            child: CircleAvatar(
+                              radius: 45,
+                              backgroundColor: AppColors.inputBlack,
+                              backgroundImage: avatar.isNotEmpty
+                                  ? NetworkImage(avatar)
+                                  : null,
+                              child: avatar.isEmpty
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 45,
+                                      color: AppColors.gold,
+                                    )
+                                  : null,
                             ),
                           ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: GestureDetector(
+                              onTap: () => _pickAvatar(context),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: AppColors.gold,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: AppColors.black,
+                                    width: 2,
+                                  ),
+                                ),
+                                padding: const EdgeInsets.all(8),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  size: 20,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        data.currentUserName,
+                        style: const TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.gold,
                         ),
                       ),
+                      Text('معرف الحساب: ${data.currentAccountId}'),
+                      Text('المستوى: ${data.currentLevel}'),
+                      Text('النقاط: ${data.currentPoints}'),
+                      if (badge != null)
+                        Text('${badge.icon} ${badge.name}'),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    data.currentUserName,
-                    style: const TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.gold,
-                    ),
-                  ),
-                  Text('معرف الحساب: ${data.currentAccountId}'),
-                  Text('المستوى: ${data.currentLevel}'),
-                  Text('النقاط: ${data.currentPoints}'),
-                  if (badge != null)
-                    Text('${badge.icon} ${badge.name}'),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          ServiceTile(
-            icon: Icons.notifications,
-            title: 'الإشعارات',
-            subtitle: 'عرض إشعارات الإدارة',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => NotificationsPage(data: data),
                 ),
-              );
-            },
-          ),
-          if (data.isAdmin)
-            ServiceTile(
-              icon: Icons.admin_panel_settings,
-              title: 'لوحة الإدارة',
-              subtitle: 'إدارة التطبيق',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AdminPanelPage(data: data),
-                  ),
-                );
-              },
-            ),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text(
-                'تسجيل الخروج',
-                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              onTap: () => logout(context),
-            ),
+              const SizedBox(height: 12),
+              ServiceTile(
+                icon: Icons.notifications,
+                title: 'الإشعارات',
+                subtitle: 'عرض إشعارات الإدارة',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => NotificationsPage(data: data),
+                    ),
+                  );
+                },
+              ),
+              if (data.isAdmin)
+                ServiceTile(
+                  icon: Icons.admin_panel_settings,
+                  title: 'لوحة الإدارة',
+                  subtitle: 'إدارة التطبيق',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AdminPanelPage(data: data),
+                      ),
+                    );
+                  },
+                ),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: const Text(
+                    'تسجيل الخروج',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () => logout(context),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -5311,7 +5484,6 @@ class AdminTile extends StatelessWidget {
     );
   }
 }
-
 // =======================================================
 // إدارة الخبر المهم
 // =======================================================
@@ -5444,7 +5616,7 @@ class _ManageImportantNewsPageState
 }
 
 // =======================================================
-// إدارة معرض الصور
+// ✅ إدارة معرض الصور - مع AnimatedBuilder
 // =======================================================
 
 class ManageGalleryPage extends StatelessWidget {
@@ -5459,86 +5631,92 @@ class ManageGalleryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('إدارة معرض الصور')),
-      body: data.gallery.isEmpty
-          ? const Center(child: Text('لا توجد صور.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: data.gallery.length,
-              itemBuilder: (_, index) {
-                final item = data.gallery[index];
-                final imageUrl = clean(item['image_url']);
-                final userName = clean(item['user_name']);
-                final caption = clean(item['caption']);
+      body: AnimatedBuilder(
+        animation: data,
+        builder: (context, _) {
+          if (data.gallery.isEmpty) {
+            return const Center(child: Text('لا توجد صور.'));
+          }
 
-                return Card(
-                  clipBehavior: Clip.antiAlias,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Image.network(
-                        imageUrl,
-                        width: double.infinity,
-                        height: 200,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) {
-                          return const SizedBox(
-                            height: 200,
-                            child: Center(
-                              child: Icon(
-                                Icons.broken_image,
-                                size: 50,
-                                color: AppColors.gold,
-                              ),
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: data.gallery.length,
+            itemBuilder: (_, index) {
+              final item = data.gallery[index];
+              final imageUrl = clean(item['image_url']);
+              final userName = clean(item['user_name']);
+              final caption = clean(item['caption']);
+
+              return Card(
+                clipBehavior: Clip.antiAlias,
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Image.network(
+                      imageUrl,
+                      width: double.infinity,
+                      height: 200,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) {
+                        return const SizedBox(
+                          height: 200,
+                          child: Center(
+                            child: Icon(
+                              Icons.broken_image,
+                              size: 50,
+                              color: AppColors.gold,
                             ),
-                          );
-                        },
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    userName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.gold,
-                                    ),
+                          ),
+                        );
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  userName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.gold,
                                   ),
-                                  if (caption.isNotEmpty)
-                                    Text(caption),
-                                ],
-                              ),
+                                ),
+                                if (caption.isNotEmpty)
+                                  Text(caption),
+                              ],
                             ),
-                            IconButton(
-                              onPressed: () async {
-                                await data
-                                    .deleteGalleryImage(item['id']);
-                                if (context.mounted) {
-                                  showSnack(
-                                    context,
-                                    'تم حذف الصورة.',
-                                  );
-                                }
-                              },
-                              icon: const Icon(
-                                Icons.delete,
-                                color: Colors.red,
-                              ),
+                          ),
+                          IconButton(
+                            onPressed: () async {
+                              await data.deleteGalleryImage(item['id']);
+                              if (context.mounted) {
+                                showSnack(
+                                  context,
+                                  'تم حذف الصورة.',
+                                );
+                              }
+                            },
+                            icon: const Icon(
+                              Icons.delete,
+                              color: Colors.red,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -5637,75 +5815,74 @@ class ManageQuizPage extends StatefulWidget {
 class _ManageQuizPageState extends State<ManageQuizPage> {
   @override
   Widget build(BuildContext context) {
-    final list = widget.data.quizQuestions;
+    return AnimatedBuilder(
+      animation: widget.data,
+      builder: (context, _) {
+        final list = widget.data.quizQuestions;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('إدارة الأسئلة')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => QuizEditorPage(data: widget.data),
-            ),
-          );
-          if (!mounted) return;
-          setState(() {});
-        },
-        child: const Icon(Icons.add),
-      ),
-      body: list.isEmpty
-          ? const Center(child: Text('لا توجد أسئلة.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: list.length,
-              itemBuilder: (_, index) {
-                final q = list[index];
+        return Scaffold(
+          appBar: AppBar(title: const Text('إدارة الأسئلة')),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => QuizEditorPage(data: widget.data),
+                ),
+              );
+            },
+            child: const Icon(Icons.add),
+          ),
+          body: list.isEmpty
+              ? const Center(child: Text('لا توجد أسئلة.'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: list.length,
+                  itemBuilder: (_, index) {
+                    final q = list[index];
 
-                return Card(
-                  child: ListTile(
-                    title: Text(clean(q['question'])),
-                    subtitle: Text(
-                      quizTypeName(
-                        clean(q['quiz_type']).isEmpty
-                            ? 'direct'
-                            : clean(q['quiz_type']),
+                    return Card(
+                      child: ListTile(
+                        title: Text(clean(q['question'])),
+                        subtitle: Text(
+                          quizTypeName(
+                            clean(q['quiz_type']).isEmpty
+                                ? 'direct'
+                                : clean(q['quiz_type']),
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => QuizEditorPage(
+                                      data: widget.data,
+                                      question: q,
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.edit),
+                            ),
+                            IconButton(
+                              onPressed: () async {
+                                await widget.data
+                                    .deleteQuizQuestion(q['id']);
+                              },
+                              icon: const Icon(Icons.delete),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          onPressed: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => QuizEditorPage(
-                                  data: widget.data,
-                                  question: q,
-                                ),
-                              ),
-                            );
-                            if (!mounted) return;
-                            setState(() {});
-                          },
-                          icon: const Icon(Icons.edit),
-                        ),
-                        IconButton(
-                          onPressed: () async {
-                            await widget.data
-                                .deleteQuizQuestion(q['id']);
-                            if (!mounted) return;
-                            setState(() {});
-                          },
-                          icon: const Icon(Icons.delete),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+                    );
+                  },
+                ),
+        );
+      },
     );
   }
 }
@@ -6067,38 +6244,41 @@ class _ManageNewsPageState extends State<ManageNewsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('إدارة الأخبار')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: add,
-        child: const Icon(Icons.add),
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: widget.data.news.length,
-        itemBuilder: (_, index) {
-          final item = widget.data.news[index];
+    return AnimatedBuilder(
+      animation: widget.data,
+      builder: (context, _) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('إدارة الأخبار')),
+          floatingActionButton: FloatingActionButton(
+            onPressed: add,
+            child: const Icon(Icons.add),
+          ),
+          body: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: widget.data.news.length,
+            itemBuilder: (_, index) {
+              final item = widget.data.news[index];
 
-          return Card(
-            child: ListTile(
-              title: Text(clean(item['title'])),
-              subtitle: Text(
-                clean(item['description']),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: IconButton(
-                onPressed: () async {
-                  await widget.data.deleteNews(item['id']);
-                  if (!mounted) return;
-                  setState(() {});
-                },
-                icon: const Icon(Icons.delete),
-              ),
-            ),
-          );
-        },
-      ),
+              return Card(
+                child: ListTile(
+                  title: Text(clean(item['title'])),
+                  subtitle: Text(
+                    clean(item['description']),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    onPressed: () async {
+                      await widget.data.deleteNews(item['id']);
+                    },
+                    icon: const Icon(Icons.delete),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -6406,67 +6586,69 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
     name.dispose();
     points.dispose();
     accountId.dispose();
-    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('إدارة الحسابات والنقاط')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => edit(),
-        child: const Icon(Icons.person_add),
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: widget.data.players.length,
-        itemBuilder: (_, index) {
-          final player = widget.data.players[index];
-          final avatar = clean(player['avatar_url']);
+    return AnimatedBuilder(
+      animation: widget.data,
+      builder: (context, _) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('إدارة الحسابات والنقاط')),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () => edit(),
+            child: const Icon(Icons.person_add),
+          ),
+          body: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: widget.data.players.length,
+            itemBuilder: (_, index) {
+              final player = widget.data.players[index];
+              final avatar = clean(player['avatar_url']);
 
-          return Card(
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: AppColors.gold,
-                backgroundImage: avatar.isNotEmpty
-                    ? NetworkImage(avatar)
-                    : null,
-                child: avatar.isEmpty
-                    ? Text(
-                        '${index + 1}',
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : null,
-              ),
-              title: Text(clean(player['name'])),
-              subtitle: Text(
-                'ID: ${player['account_id'] ?? 'غير مرتبط'}\nالمستوى: ${getUserLevel(toInt(player['points']))}',
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('${toInt(player['points'])}'),
-                  IconButton(
-                    onPressed: () => edit(player),
-                    icon: const Icon(Icons.edit),
+              return Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppColors.gold,
+                    backgroundImage: avatar.isNotEmpty
+                        ? NetworkImage(avatar)
+                        : null,
+                    child: avatar.isEmpty
+                        ? Text(
+                            '${index + 1}',
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : null,
                   ),
-                  IconButton(
-                    onPressed: () async {
-                      await widget.data.deletePlayer(player['id']);
-                      if (!mounted) return;
-                      setState(() {});
-                    },
-                    icon: const Icon(Icons.delete),
+                  title: Text(clean(player['name'])),
+                  subtitle: Text(
+                    'ID: ${player['account_id'] ?? 'غير مرتبط'}\nالمستوى: ${getUserLevel(toInt(player['points']))}',
                   ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${toInt(player['points'])}'),
+                      IconButton(
+                        onPressed: () => edit(player),
+                        icon: const Icon(Icons.edit),
+                      ),
+                      IconButton(
+                        onPressed: () async {
+                          await widget.data.deletePlayer(player['id']);
+                        },
+                        icon: const Icon(Icons.delete),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -6511,51 +6693,53 @@ class _ManageLatestPageState extends State<ManageLatestPage> {
     if (ok) {
       title.clear();
       description.clear();
-      setState(() {});
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('إدارة كل جديد')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          TextField(
-            controller: title,
-            decoration: const InputDecoration(labelText: 'العنوان'),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: description,
-            maxLines: 3,
-            decoration: const InputDecoration(labelText: 'الوصف'),
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: add,
-            child: const Text('إضافة'),
-          ),
-          const SizedBox(height: 15),
-          ...widget.data.latest.map(
-            (item) => Card(
-              child: ListTile(
-                title: Text(clean(item['title'])),
-                subtitle: Text(clean(item['description'])),
-                trailing: IconButton(
-                  onPressed: () async {
-                    await widget.data.deleteLatest(item['id']);
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                  icon: const Icon(Icons.delete),
+    return AnimatedBuilder(
+      animation: widget.data,
+      builder: (context, _) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('إدارة كل جديد')),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              TextField(
+                controller: title,
+                decoration: const InputDecoration(labelText: 'العنوان'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: description,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'الوصف'),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: add,
+                child: const Text('إضافة'),
+              ),
+              const SizedBox(height: 15),
+              ...widget.data.latest.map(
+                (item) => Card(
+                  child: ListTile(
+                    title: Text(clean(item['title'])),
+                    subtitle: Text(clean(item['description'])),
+                    trailing: IconButton(
+                      onPressed: () async {
+                        await widget.data.deleteLatest(item['id']);
+                      },
+                      icon: const Icon(Icons.delete),
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -6582,25 +6766,28 @@ class _ManageMessagesPageState extends State<ManageMessagesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('رسائل المستخدمين')),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: widget.data.messages.length,
-        itemBuilder: (_, index) {
-          final item = widget.data.messages[index];
+      body: AnimatedBuilder(
+        animation: widget.data,
+        builder: (context, _) {
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: widget.data.messages.length,
+            itemBuilder: (_, index) {
+              final item = widget.data.messages[index];
 
-          return Card(
-            child: ListTile(
-              title: Text(clean(item['name'])),
-              subtitle: Text(clean(item['message'])),
-              trailing: IconButton(
-                onPressed: () async {
-                  await widget.data.deleteMessage(item['id']);
-                  if (!mounted) return;
-                  setState(() {});
-                },
-                icon: const Icon(Icons.delete),
-              ),
-            ),
+              return Card(
+                child: ListTile(
+                  title: Text(clean(item['name'])),
+                  subtitle: Text(clean(item['message'])),
+                  trailing: IconButton(
+                    onPressed: () async {
+                      await widget.data.deleteMessage(item['id']);
+                    },
+                    icon: const Icon(Icons.delete),
+                  ),
+                ),
+              );
+            },
           );
         },
       ),
@@ -6629,7 +6816,6 @@ class _ManagePurchaseRequestsPageState
     extends State<ManagePurchaseRequestsPage> {
   Future<void> refresh() async {
     await widget.data.loadData();
-    if (mounted) setState(() {});
   }
 
   @override
@@ -6644,57 +6830,64 @@ class _ManagePurchaseRequestsPageState
           ),
         ],
       ),
-      body: widget.data.purchaseRequests.isEmpty
-          ? const Center(child: Text('لا توجد طلبات.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: widget.data.purchaseRequests.length,
-              itemBuilder: (_, index) {
-                final item = widget.data.purchaseRequests[index];
-                final status = clean(item['status']);
+      body: AnimatedBuilder(
+        animation: widget.data,
+        builder: (context, _) {
+          if (widget.data.purchaseRequests.isEmpty) {
+            return const Center(child: Text('لا توجد طلبات.'));
+          }
 
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('اللاعب: ${item['player_id']}'),
-                        Text('العنصر: ${clean(item['item_type'])}'),
-                        Text('التكلفة: ${toInt(item['cost'])}'),
-                        Text('الحالة: $status'),
-                        if (status == 'pending')
-                          Row(
-                            children: [
-                              Expanded(
-                                child: FilledButton(
-                                  onPressed: () async {
-                                    await widget.data
-                                        .approvePurchase(item);
-                                    await refresh();
-                                  },
-                                  child: const Text('موافقة'),
-                                ),
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: widget.data.purchaseRequests.length,
+            itemBuilder: (_, index) {
+              final item = widget.data.purchaseRequests[index];
+              final status = clean(item['status']);
+
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('اللاعب: ${item['player_id']}'),
+                      Text('العنصر: ${clean(item['item_type'])}'),
+                      Text('التكلفة: ${toInt(item['cost'])}'),
+                      Text('الحالة: $status'),
+                      if (status == 'pending')
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: () async {
+                                  await widget.data
+                                      .approvePurchase(item);
+                                  await refresh();
+                                },
+                                child: const Text('موافقة'),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () async {
-                                    await widget.data
-                                        .rejectPurchase(item['id']);
-                                    await refresh();
-                                  },
-                                  child: const Text('رفض'),
-                                ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () async {
+                                  await widget.data
+                                      .rejectPurchase(item['id']);
+                                  await refresh();
+                                },
+                                child: const Text('رفض'),
                               ),
-                            ],
-                          ),
-                      ],
-                    ),
+                            ),
+                          ],
+                        ),
+                    ],
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
