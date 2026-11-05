@@ -7,6 +7,9 @@ import '../core/colors.dart';
 import '../core/helpers.dart';
 import '../data/app_data.dart';
 
+// =======================================================
+// 1. لوحة الإدارة الرئيسية
+// =======================================================
 class AdminPanelPage extends StatelessWidget {
   final AppData data;
   const AdminPanelPage({super.key, required this.data});
@@ -28,7 +31,7 @@ class AdminPanelPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          AdminTile(icon: Icons.people, title: 'إدارة اللاعبين ومراقبة الحسابات', colorIndex: 0, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ManagePointsPage(data: data)))),
+          AdminTile(icon: Icons.people, title: 'إدارة ومراقبة الحسابات', colorIndex: 0, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ManagePointsPage(data: data)))),
           AdminTile(icon: Icons.campaign, title: 'الخبر المهم', colorIndex: 1, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ManageImportantNewsPage(data: data)))),
           AdminTile(icon: Icons.photo_library, title: 'إدارة معرض الصور', colorIndex: 2, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ManageGalleryPage(data: data)))),
           AdminTile(icon: Icons.assignment_turned_in, title: 'نتائج الاختبارات', colorIndex: 3, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ManageQuizResultsPage(data: data)))),
@@ -64,6 +67,9 @@ class AdminTile extends StatelessWidget {
   }
 }
 
+// =======================================================
+// 2. إدارة ومراقبة الحسابات (متصل / غير متصل / لم يفتح)
+// =======================================================
 class ManagePointsPage extends StatefulWidget {
   final AppData data;
   const ManagePointsPage({super.key, required this.data});
@@ -96,12 +102,23 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
             bool ok;
             if (player == null) { ok = await widget.data.addPlayer(name.text, parsedPoints, accountId: parsedId); }
             else { ok = await widget.data.updatePlayer(player['id'], name.text, parsedPoints, accountId: parsedId); }
-            if (context.mounted) { Navigator.pop(context); showSnack(context, ok ? 'تم حفظ الحساب.' : 'فشل الحفظ. قد يكون معرف الحساب مستخدماً.'); }
+            if (context.mounted) { Navigator.pop(context); showSnack(context, ok ? 'تم حفظ الحساب.' : 'فشل الحفظ.'); }
           }, child: const Text('حفظ')),
         ],
       ),
     );
     name.dispose(); points.dispose(); accountId.dispose();
+  }
+
+  String _getUserStatus(Map<String, dynamic> player) {
+    final lastSeenStr = player['last_seen']?.toString();
+    if (lastSeenStr == null || lastSeenStr.isEmpty || lastSeenStr == 'null') return 'never';
+    try {
+      final lastSeen = DateTime.parse(lastSeenStr).toLocal();
+      final diff = DateTime.now().difference(lastSeen).inMinutes;
+      if (diff < 3) return 'online';
+      return 'offline';
+    } catch (e) { return 'never'; }
   }
 
   @override
@@ -110,19 +127,20 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
       animation: widget.data,
       builder: (context, _) {
         final players = widget.data.players;
-        final linkedCount = players.where((p) => p['account_id'] != null && parseInt(p['account_id']) > 0).length;
-        final unlinkedCount = players.length - linkedCount;
+        final onlineCount = players.where((p) => _getUserStatus(p) == 'online').length;
+        final offlineCount = players.where((p) => _getUserStatus(p) == 'offline').length;
+        final neverCount = players.where((p) => _getUserStatus(p) == 'never').length;
 
         return Scaffold(
-          appBar: AppBar(title: const Text('إدارة الحسابات')),
+          appBar: AppBar(title: const Text('المراقبة والإدارة'), actions: [IconButton(onPressed: () => widget.data.loadPlayers(), icon: const Icon(Icons.refresh))]),
           floatingActionButton: FloatingActionButton(onPressed: () => edit(), child: const Icon(Icons.person_add)),
           body: Column(children: [
             Container(
-              padding: const EdgeInsets.all(16), color: AppColors.cardBlack,
+              padding: const EdgeInsets.all(12), color: AppColors.cardBlack,
               child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-                _statBox('إجمالي', players.length, Colors.blue),
-                _statBox('مسجل دخول', linkedCount, Colors.green),
-                _statBox('بدون ID', unlinkedCount, Colors.red),
+                _statBox('🟢 متصل', onlineCount, Colors.green),
+                _statBox('🔴 خرج', offlineCount, Colors.red),
+                _statBox('⚪ لم يفتح', neverCount, Colors.grey),
               ]),
             ),
             Expanded(
@@ -131,18 +149,29 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
                 itemBuilder: (_, index) {
                   final player = players[index];
                   final avatar = clean(player['avatar_url']);
+                  final status = _getUserStatus(player);
                   final hasId = player['account_id'] != null && parseInt(player['account_id']) > 0;
+
+                  Color statusColor;
+                  String statusText;
+
+                  if (!hasId) { statusColor = Colors.orange; statusText = '⚠️ بدون معرف حساب'; } 
+                  else if (status == 'online') { statusColor = Colors.green; statusText = '🟢 يفتح التطبيق الآن'; } 
+                  else if (status == 'offline') { statusColor = Colors.red; statusText = '🔴 خرج من التطبيق'; } 
+                  else { statusColor = Colors.grey; statusText = '⚪ لم يفتح التطبيق أبداً'; }
 
                   return Card(
                     child: ListTile(
-                      leading: CircleAvatar(backgroundColor: AppColors.gold, backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null, child: avatar.isEmpty ? Text('${index + 1}', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)) : null),
-                      title: Row(children: [
-                        Expanded(child: Text(clean(player['name']), style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(clean(player['name']))))),
-                        if (hasId) const Icon(Icons.verified_user, color: Colors.green, size: 20) else const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
+                      leading: Stack(children: [
+                        CircleAvatar(backgroundColor: AppColors.gold, backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null, child: avatar.isEmpty ? Text('${index + 1}', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)) : null),
+                        Positioned(bottom: 0, right: 0, child: Container(width: 14, height: 14, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)))),
                       ]),
-                      subtitle: Text(hasId ? 'ID: ${player['account_id']} | المستوى: ${getUserLevel(parseInt(player['points']))}' : '⚠️ لم يسجل دخول | المستوى: ${getUserLevel(parseInt(player['points']))}', style: TextStyle(color: hasId ? Colors.grey : Colors.red.shade300)),
+                      title: Text(clean(player['name']), style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(clean(player['name'])))),
+                      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(statusText, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text('ID: ${player['account_id'] ?? 'بدون'} | ${parseInt(player['points'])} نقطة', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      ]),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Text('${parseInt(player['points'])} نقطة', style: const TextStyle(color: AppColors.gold)),
                         IconButton(onPressed: () => edit(player), icon: const Icon(Icons.edit, size: 20)),
                         IconButton(onPressed: () async => await widget.data.deletePlayer(player['id']), icon: const Icon(Icons.delete, color: Colors.red, size: 20)),
                       ]),
@@ -159,12 +188,15 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
 
   Widget _statBox(String title, int count, Color color) {
     return Column(children: [
-      Text('$count', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-      Text(title, style: TextStyle(color: color, fontSize: 12)),
+      Text('$count', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+      Text(title, style: TextStyle(color: color, fontSize: 11)),
     ]);
   }
 }
 
+// =======================================================
+// 3. الخبر المهم
+// =======================================================
 class ManageImportantNewsPage extends StatefulWidget {
   final AppData data;
   const ManageImportantNewsPage({super.key, required this.data});
@@ -208,6 +240,9 @@ class _ManageImportantNewsPageState extends State<ManageImportantNewsPage> {
   }
 }
 
+// =======================================================
+// 4. إدارة معرض الصور
+// =======================================================
 class ManageGalleryPage extends StatelessWidget {
   final AppData data;
   const ManageGalleryPage({super.key, required this.data});
@@ -239,6 +274,9 @@ class ManageGalleryPage extends StatelessWidget {
   }
 }
 
+// =======================================================
+// 5. نتائج الاختبارات
+// =======================================================
 class ManageQuizResultsPage extends StatefulWidget {
   final AppData data;
   const ManageQuizResultsPage({super.key, required this.data});
@@ -273,6 +311,9 @@ class _ManageQuizResultsPageState extends State<ManageQuizResultsPage> {
   }
 }
 
+// =======================================================
+// 6. إدارة الأسئلة
+// =======================================================
 class ManageQuizPage extends StatefulWidget {
   final AppData data;
   const ManageQuizPage({super.key, required this.data});
@@ -348,6 +389,9 @@ class _QuizEditorPageState extends State<QuizEditorPage> {
   }
 }
 
+// =======================================================
+// 7. إدارة الأخبار (مع زر الصورة)
+// =======================================================
 class ManageNewsPage extends StatefulWidget {
   final AppData data;
   const ManageNewsPage({super.key, required this.data});
@@ -357,23 +401,52 @@ class ManageNewsPage extends StatefulWidget {
 
 class _ManageNewsPageState extends State<ManageNewsPage> {
   final t = TextEditingController(), d = TextEditingController();
+  File? _image;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('إدارة الأخبار')),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => showDialog(context: context, builder: (_) => AlertDialog(
-          title: const Text('خبر جديد'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: t, decoration: const InputDecoration(labelText: 'العنوان')),
-            TextField(controller: d, decoration: const InputDecoration(labelText: 'الوصف')),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            FilledButton(onPressed: () async { await widget.data.addNews(t.text, d.text); if (context.mounted) Navigator.pop(context); }, child: const Text('نشر')),
-          ],
-        )),
+        onPressed: () {
+          t.clear(); d.clear(); _image = null; 
+          showDialog(
+            context: context,
+            builder: (context) => StatefulBuilder(
+              builder: (context, setState) {
+                return AlertDialog(
+                  title: const Text('خبر جديد'),
+                  content: SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      TextField(controller: t, decoration: const InputDecoration(labelText: 'العنوان')),
+                      TextField(controller: d, decoration: const InputDecoration(labelText: 'الوصف')),
+                      const SizedBox(height: 10),
+                      if (_image != null) Image.file(_image!, height: 120, width: double.infinity, fit: BoxFit.cover),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final picker = ImagePicker();
+                          final picked = await picker.pickImage(source: ImageSource.gallery);
+                          if (picked != null) setState(() => _image = File(picked.path));
+                        },
+                        icon: const Icon(Icons.image), label: const Text('اختيار صورة للخبر'),
+                      ),
+                    ]),
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+                    FilledButton(
+                      onPressed: () async { 
+                        await widget.data.addNews(t.text, d.text, imageFile: _image); 
+                        if (context.mounted) Navigator.pop(context); 
+                      }, 
+                      child: const Text('نشر')
+                    ),
+                  ],
+                );
+              }
+            ),
+          );
+        },
         child: const Icon(Icons.add),
       ),
       body: AnimatedBuilder(
@@ -387,6 +460,9 @@ class _ManageNewsPageState extends State<ManageNewsPage> {
   }
 }
 
+// =======================================================
+// 8. إدارة الإشعارات
+// =======================================================
 class ManageNotificationsPage extends StatefulWidget {
   final AppData data;
   const ManageNotificationsPage({super.key, required this.data});
@@ -409,6 +485,9 @@ class _ManageNotificationsPageState extends State<ManageNotificationsPage> {
   }
 }
 
+// =======================================================
+// 9. إدارة الاستطلاعات (4 خيارات)
+// =======================================================
 class ManagePollPage extends StatefulWidget {
   final AppData data;
   const ManagePollPage({super.key, required this.data});
@@ -417,21 +496,54 @@ class ManagePollPage extends StatefulWidget {
 }
 
 class _ManagePollPageState extends State<ManagePollPage> {
-  final q = TextEditingController(), o1 = TextEditingController(), o2 = TextEditingController();
+  final q = TextEditingController();
+  final o1 = TextEditingController();
+  final o2 = TextEditingController();
+  final o3 = TextEditingController();
+  final o4 = TextEditingController();
+
+  @override
+  void dispose() {
+    q.dispose(); o1.dispose(); o2.dispose(); o3.dispose(); o4.dispose();
+    super.dispose();
+  }
+
+  Future<void> create() async {
+    if (q.text.trim().isEmpty) return;
+    final options = [o1.text, o2.text, o3.text, o4.text].map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (options.length < 2) { showSnack(context, 'أدخل خيارين على الأقل.'); return; }
+    final ok = await widget.data.createPoll(q.text, options);
+    if (ok && context.mounted) {
+      q.clear(); o1.clear(); o2.clear(); o3.clear(); o4.clear();
+      showSnack(context, 'تم إنشاء الاستطلاع.');
+      Navigator.pop(context);
+    } else { showSnack(context, 'تعذر إنشاء الاستطلاع.'); }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('إنشاء استطلاع')),
-      body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-        TextField(controller: q, decoration: const InputDecoration(labelText: 'السؤال')),
-        TextField(controller: o1, decoration: const InputDecoration(labelText: 'خيار 1')),
-        TextField(controller: o2, decoration: const InputDecoration(labelText: 'خيار 2')),
-        FilledButton(onPressed: () async { await widget.data.createPoll(q.text, [o1.text, o2.text]); if (context.mounted) Navigator.pop(context); }, child: const Text('إنشاء')),
-      ])),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        TextField(controller: q, decoration: const InputDecoration(labelText: 'سؤال الاستطلاع')),
+        const SizedBox(height: 10),
+        TextField(controller: o1, decoration: const InputDecoration(labelText: 'الخيار الأول')),
+        const SizedBox(height: 10),
+        TextField(controller: o2, decoration: const InputDecoration(labelText: 'الخيار الثاني')),
+        const SizedBox(height: 10),
+        TextField(controller: o3, decoration: const InputDecoration(labelText: 'الخيار الثالث (اختياري)')),
+        const SizedBox(height: 10),
+        TextField(controller: o4, decoration: const InputDecoration(labelText: 'الخيار الرابع (اختياري)')),
+        const SizedBox(height: 20),
+        FilledButton.icon(onPressed: create, icon: const Icon(Icons.poll), label: const Text('نشر الاستطلاع')),
+      ]),
     );
   }
 }
 
+// =======================================================
+// 10. إدارة كل جديد
+// =======================================================
 class ManageLatestPage extends StatefulWidget {
   final AppData data;
   const ManageLatestPage({super.key, required this.data});
@@ -457,6 +569,9 @@ class _ManageLatestPageState extends State<ManageLatestPage> {
   }
 }
 
+// =======================================================
+// 11. إدارة الرسائل
+// =======================================================
 class ManageMessagesPage extends StatelessWidget {
   final AppData data;
   const ManageMessagesPage({super.key, required this.data});
@@ -469,6 +584,9 @@ class ManageMessagesPage extends StatelessWidget {
   }
 }
 
+// =======================================================
+// 12. إدارة طلبات المتجر
+// =======================================================
 class ManagePurchaseRequestsPage extends StatelessWidget {
   final AppData data;
   const ManagePurchaseRequestsPage({super.key, required this.data});
