@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class LocalCache {
+ LocalCache {
   static const String _prefix = 'mr_otaku_cache_';
   static SharedPreferences? _prefs;
 
