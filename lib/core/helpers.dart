@@ -1,15 +1,14 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'colors.dart';
 
 Future<void> playClickSound() async {
-  try {
-    await SystemSound.play(SystemSoundType.click);
-  } catch (_) {}
+  try { await SystemSound.play(SystemSoundType.click); } catch (_) {}
 }
 
-int toInt(dynamic value) => int.tryParse(value?.toString() ?? '') ?? 0;
-double toDouble(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
+int parseInt(dynamic value) => int.tryParse(value?.toString() ?? '') ?? 0;
+double parseDouble(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
 String clean(dynamic value) => value?.toString() ?? '';
 
 String getUserLevel(int points) {
@@ -35,6 +34,63 @@ String safeExtension(String path) {
   const allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'bmp'];
   if (raw.length <= 5 && allowed.contains(raw)) return raw;
   return 'jpg';
+}
+
+Future<bool> checkAdminSession(dynamic data) async {
+  final accId = data.currentAccountId;
+  if (accId == null) return false;
+  try {
+    final player = await Supabase.instance.client
+        .from('players')
+        .select()
+        .eq('account_id', accId)
+        .maybeSingle();
+    if (player == null) return false;
+    return player['is_admin'] == true;
+  } catch (e) {
+    debugPrint('Admin session error: $e');
+    return false;
+  }
+}
+
+void showAvatarDialog(BuildContext context, String url, String name) {
+  showDialog(
+    context: context,
+    builder: (_) => Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.gold, width: 4),
+              boxShadow: [
+                BoxShadow(color: AppColors.gold.withOpacity(0.5), blurRadius: 20, spreadRadius: 5),
+              ],
+            ),
+            child: CircleAvatar(
+              radius: 100,
+              backgroundColor: AppColors.inputBlack,
+              backgroundImage: url.isNotEmpty ? NetworkImage(url) : null,
+              child: url.isEmpty ? const Icon(Icons.person, size: 100, color: AppColors.gold) : null,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.black.withOpacity(0.8),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.gold),
+            ),
+            child: Text(name, style: const TextStyle(color: AppColors.gold, fontSize: 22, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class BadgeInfo {
@@ -63,12 +119,24 @@ BadgeInfo? getCurrentBadge(int points) {
   return current;
 }
 
+class RewardInfo {
+  final String name;
+  final String icon;
+  final int requiredPoints;
+  const RewardInfo({required this.name, required this.icon, required this.requiredPoints});
+}
+
+const List<RewardInfo> allRewards = [
+  RewardInfo(name: 'ميدالية برونزية', icon: '🥉', requiredPoints: 10),
+  RewardInfo(name: 'ميدالية فضية', icon: '🥈', requiredPoints: 30),
+  RewardInfo(name: 'ميدالية ذهبية', icon: '🥇', requiredPoints: 60),
+  RewardInfo(name: 'كأس ذهبي', icon: '🏆', requiredPoints: 100),
+  RewardInfo(name: 'كرة ذهبية', icon: '⚽', requiredPoints: 250),
+  RewardInfo(name: 'تاج ملكي', icon: '👑', requiredPoints: 500),
+];
+
 void showSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: Colors.black87,
-    ),
+    SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: AppColors.cardBlack),
   );
 }
