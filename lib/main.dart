@@ -1,27 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide toInt;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
 
-// استيراد ملفاتنا الجديدة
 import 'core/colors.dart';
 import 'core/helpers.dart';
 import 'data/app_data.dart';
-import 'data/local_cache.dart';
 import 'screens/auth_screen.dart';
-import 'screens/home_screens.dart'; // سننشئ هذا الملف في الخطوة القادمة
+import 'screens/home_screens.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Supabase.initialize(
     url: 'https://sekchgllbimoedsjoumi.supabase.co',
     anonKey: 'sb_publishable_EZLVSUviR39RXi6OP3OqfQ_3j7vMZcU',
   );
-
   await LocalCache.init();
-
   runApp(const MrOtakuApp());
 
   Future.delayed(const Duration(seconds: 2), () async {
@@ -34,27 +29,8 @@ Future<void> main() async {
   });
 }
 
-// دالة التحقق من صلاحية المدير
-Future<bool> checkAdminSession(AppData data) async {
-  if (data.currentAccountId == null) return false;
-  try {
-    final player = await Supabase.instance.client
-        .from('players')
-        .select()
-        .eq('account_id', data.currentAccountId!)
-        .maybeSingle();
-
-    if (player == null) return false;
-    return player['is_admin'] == true;
-  } catch (e) {
-    debugPrint('Admin session error: $e');
-    return false;
-  }
-}
-
 class MrOtakuApp extends StatefulWidget {
   const MrOtakuApp({super.key});
-
   @override
   State<MrOtakuApp> createState() => _MrOtakuAppState();
 }
@@ -75,17 +51,12 @@ class _MrOtakuAppState extends State<MrOtakuApp> {
     } catch (e) {
       debugPrint('loadLocalAccount error: $e');
     }
-
-    if (mounted) {
-      setState(() {
-        checking = false;
-      });
-    }
+    if (mounted) setState(() => checking = false);
 
     Future.microtask(() async {
       try {
         if (data.hasAccount) {
-          final admin = await checkAdminSession(data);
+          final admin = await checkAdminSession(data); // من ملف helpers
           await data.setAdminSession(admin);
           await data.loadData();
         }
@@ -118,70 +89,29 @@ class _MrOtakuAppState extends State<MrOtakuApp> {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.black,
         indicatorColor: AppColors.gold.withOpacity(0.2),
-        labelTextStyle: MaterialStateProperty.all(
-          const TextStyle(
-            color: AppColors.gold,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        iconTheme: MaterialStateProperty.all(
-          const IconThemeData(color: AppColors.gold),
-        ),
+        labelTextStyle: MaterialStateProperty.all(const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
+        iconTheme: MaterialStateProperty.all(const IconThemeData(color: AppColors.gold)),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.inputBlack,
         labelStyle: const TextStyle(color: AppColors.gold),
         hintStyle: TextStyle(color: AppColors.gold.withOpacity(0.5)),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.gold),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.borderGold),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.gold, width: 1.5),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.gold)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.borderGold)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.gold, width: 1.5)),
       ),
       cardTheme: CardTheme(
         color: AppColors.cardBlack,
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.all(Radius.circular(18)),
-          side: const BorderSide(color: AppColors.borderGold),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: const BorderRadius.all(Radius.circular(18)), side: const BorderSide(color: AppColors.borderGold)),
       ),
       iconTheme: const IconThemeData(color: AppColors.gold),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: AppColors.gold,
-          foregroundColor: Colors.black,
-        ),
-      ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(foregroundColor: AppColors.gold),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.gold,
-          side: const BorderSide(color: AppColors.gold),
-        ),
-      ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: AppColors.gold,
-        foregroundColor: Colors.black,
-      ),
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: AppColors.gold,
-      ),
-      sliderTheme: const SliderThemeData(
-        activeTrackColor: AppColors.gold,
-        thumbColor: AppColors.gold,
-        inactiveTrackColor: AppColors.borderGold,
-      ),
+      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: Colors.black)),
+      textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: AppColors.gold)),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(foregroundColor: AppColors.gold, side: const BorderSide(color: AppColors.gold))),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(backgroundColor: AppColors.gold, foregroundColor: Colors.black),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(color: AppColors.gold),
     );
   }
 
@@ -191,38 +121,20 @@ class _MrOtakuAppState extends State<MrOtakuApp> {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: theme,
-        home: const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(color: AppColors.gold),
-          ),
-        ),
+        home: const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.gold))),
       );
     }
 
     return AnimatedBuilder(
       animation: data,
       builder: (_, __) {
-        Widget home;
-        if (!data.hasAccount) {
-          home = AccountSetupPage(data: data);
-        } else {
-          home = HomePage(data: data); // سيتم إنشاؤها في الجزء القادم
-        }
-
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'مستر أوتاكو',
-          theme: theme,
-          home: home,
-        );
+        Widget home = !data.hasAccount ? AccountSetupPage(data: data) : HomePage(data: data);
+        return MaterialApp(debugShowCheckedModeBanner: false, title: 'مستر أوتاكو', theme: theme, home: home);
       },
     );
   }
 }
 
-// =======================================================
-// خدمة الإشعارات (بقيت في main.dart لأنها تتعلق بالنظام)
-// =======================================================
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   static const String _channelId = 'mr_otaku_channel';
@@ -230,9 +142,7 @@ class NotificationService {
   static const String _channelDesc = 'إشعارات الأخبار والإدارة';
 
   static Future<void> init() async {
-    const settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    );
+    const settings = InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher'));
     await _plugin.initialize(settings);
     await _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
     await _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(
@@ -263,7 +173,6 @@ class NotificationService {
       final lastId = prefs.getString('mr_otaku_last_notif_id') ?? '';
       final result = await Supabase.instance.client.from('notifications').select().order('created_at', ascending: false).limit(1);
       if (result.isEmpty) return;
-
       final first = result.first;
       final currentId = clean(first['id']);
       if (lastId.isNotEmpty && currentId != lastId) {
@@ -281,10 +190,7 @@ void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
       try { Supabase.instance.client; } catch (_) {
-        await Supabase.initialize(
-          url: 'https://sekchgllbimoedsjoumi.supabase.co',
-          anonKey: 'sb_publishable_EZLVSUviR39RXi6OP3OqfQ_3j7vMZcU',
-        );
+        await Supabase.initialize(url: 'https://sekchgllbimoedsjoumi.supabase.co', anonKey: 'sb_publishable_EZLVSUviR39RXi6OP3OqfQ_3j7vMZcU');
       }
     } catch (_) {}
     await NotificationService.init();
