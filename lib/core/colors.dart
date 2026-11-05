@@ -20,7 +20,7 @@ class AppColors {
 
   static Color getColorForName(String name) {
     if (name.isEmpty) return palette[0];
-    final hash = name.codeUnits.fold(0, (prev, elem) => prev + elem);
+    final hash = name.codeUnits.fold<int>(0, (prev, elem) => prev + elem);
     return getColor(hash);
   }
 }
