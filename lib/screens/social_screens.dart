@@ -13,7 +13,7 @@ import '../core/theme_manager.dart';
 import '../data/app_data.dart';
 
 // =======================================================
-// 1. صفحة المنشورات
+// صفحة المنشورات
 // =======================================================
 class PostsPage extends StatelessWidget {
   final AppData data;
@@ -31,7 +31,7 @@ class PostsPage extends StatelessWidget {
 }
 
 // =======================================================
-// بطاقة المنشور (مع دعم الفيديو)
+// بطاقة المنشور (تنزيل + فيديو + حفظ + مشاركة + إبلاغ)
 // =======================================================
 class PostCard extends StatefulWidget {
   final AppData data; final Map<String, dynamic> post;
@@ -56,6 +56,14 @@ class _PostCardState extends State<PostCard> {
     showSnack(context, 'تم نسخ المنشور!');
   }
 
+  Future<void> _downloadImage() async {
+    final img = clean(widget.post['image_url']);
+    if (img.isEmpty) return;
+    showSnack(context, 'جاري التنزيل...');
+    final ok = await downloadImageToGallery(img, fileName: 'mr_otaku_post');
+    if (mounted) showSnack(context, ok ? '✅ تم حفظ الصورة في معرض هاتفك.' : 'تعذر الحفظ. تأكد من صلاحيات التطبيق.');
+  }
+
   Future<void> _report() async {
     final ctrl = TextEditingController();
     final reason = await showDialog<String>(context: context, builder: (_) => AlertDialog(
@@ -75,7 +83,8 @@ class _PostCardState extends State<PostCard> {
   @override
   Widget build(BuildContext context) {
     final data = widget.data; final post = widget.post;
-    final name = clean(post['user_name']); final avatar = data.avatarForAccount(post['account_id']);
+    final name = data.displayNameForAccount(post['account_id']);
+    final avatar = data.avatarForAccount(post['account_id']);
     final img = clean(post['image_url']);
     final vid = clean(post['video_url']);
     final postId = post['id'];
@@ -102,9 +111,21 @@ class _PostCardState extends State<PostCard> {
       if (clean(post['content']).isNotEmpty) Text(clean(post['content']), style: const TextStyle(fontSize: 16)),
       if (img.isNotEmpty) ...[
         const SizedBox(height: 10),
-        GestureDetector(onDoubleTap: () { if (!liked) _handleLike(); }, child: ClipRRect(borderRadius: BorderRadius.circular(12), child: CachedNetworkImage(imageUrl: img, width: double.infinity, fit: BoxFit.cover, errorWidget: (_, __, ___) => const SizedBox()))),
+        GestureDetector(
+          onDoubleTap: () { if (!liked) _handleLike(); },
+          child: Stack(children: [
+            ClipRRect(borderRadius: BorderRadius.circular(12), child: CachedNetworkImage(imageUrl: img, width: double.infinity, fit: BoxFit.cover, errorWidget: (_, __, ___) => const SizedBox())),
+            Positioned(bottom: 8, right: 8, child: CircleAvatar(
+              backgroundColor: Colors.black54,
+              child: IconButton(
+                icon: const Icon(Icons.download, color: Colors.white, size: 20),
+                onPressed: _downloadImage,
+                tooltip: 'تنزيل الصورة',
+              ),
+            )),
+          ]),
+        ),
       ],
-      // 🎬 الفيديو
       if (vid.isNotEmpty) ...[
         const SizedBox(height: 10),
         ClipRRect(borderRadius: BorderRadius.circular(12), child: InlineVideo(url: vid)),
@@ -124,7 +145,9 @@ class _PostCardState extends State<PostCard> {
   }
 }
 
-// 🎬 مشغل فيديو مضمّن
+// =======================================================
+// مشغل فيديو مضمّن
+// =======================================================
 class InlineVideo extends StatefulWidget {
   final String url;
   const InlineVideo({super.key, required this.url});
@@ -208,8 +231,14 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
       child: Column(children: [
         const Padding(padding: EdgeInsets.all(16), child: Text('التعليقات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.gold))),
         Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : ListView.builder(itemCount: comments.length, itemBuilder: (_, i) {
-          final c = comments[i]; final name = clean(c['user_name']); final replyTo = clean(c['reply_to']); final img = clean(c['image_url']); final avatarUrl = widget.data.avatarForAccount(c['account_id']); final isVerified = widget.data.isPlayerAdmin(c['account_id']);
-          final cid = c['id']; final isLiked = widget.data.isCommentLiked(cid, 'post');
+          final c = comments[i];
+          final name = widget.data.displayNameForAccount(c['account_id']);
+          final replyTo = clean(c['reply_to']);
+          final img = clean(c['image_url']);
+          final avatarUrl = widget.data.avatarForAccount(c['account_id']);
+          final isVerified = widget.data.isPlayerAdmin(c['account_id']);
+          final cid = c['id'];
+          final isLiked = widget.data.isCommentLiked(cid, 'post');
           return Card(margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), child: Padding(padding: const EdgeInsets.all(10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserProfilePage(data: widget.data, accountId: parseInt(c['account_id']), userName: name))), child: CircleAvatar(radius: 18, backgroundImage: avatarUrl.isNotEmpty ? CachedNetworkImageProvider(avatarUrl) : null, child: avatarUrl.isEmpty ? const Icon(Icons.person, size: 18) : null)),
@@ -259,18 +288,20 @@ class _UserProfilePageState extends State<UserProfilePage> {
     return AnimatedBuilder(animation: widget.data, builder: (context, _) {
       Map<String, dynamic>? player;
       for (final p in widget.data.players) { if (parseInt(p['account_id']) == widget.accountId) { player = p; break; } }
-      final avatar = clean(player?['avatar_url']); final points = parseInt(player?['points']);
+      final avatar = clean(player?['avatar_url']);
+      final points = parseInt(player?['points']);
       final posts = widget.data.posts.where((p) => parseInt(p['account_id']) == widget.accountId).toList();
       final isVerified = widget.data.isPlayerAdmin(widget.accountId);
       final isFollowing = widget.data.isFollowing(widget.accountId);
       final isMe = widget.accountId == widget.data.currentAccountId;
+      final displayName = widget.data.displayNameForAccount(widget.accountId);
       final primary = ThemeManager.instance.primaryColor;
 
-      return Scaffold(appBar: AppBar(title: Text(widget.userName)), body: ListView(children: [
+      return Scaffold(appBar: AppBar(title: Text(displayName)), body: ListView(children: [
         Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-          GestureDetector(onTap: () => showAvatarDialog(context, avatar, widget.userName), child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primary, width: 3)), child: CircleAvatar(radius: 45, backgroundColor: AppColors.inputBlack, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, size: 45, color: AppColors.gold) : null))),
+          GestureDetector(onTap: () => showAvatarDialog(context, avatar, displayName), child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primary, width: 3), boxShadow: ThemeManager.instance.getGlowShadow()), child: CircleAvatar(radius: 45, backgroundColor: AppColors.inputBlack, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, size: 45, color: AppColors.gold) : null))),
           const SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text(widget.userName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: primary)), if (isVerified) ...[const SizedBox(width: 4), const Icon(Icons.verified, color: Colors.blue, size: 20)]]),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text(displayName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: primary)), if (isVerified) ...[const SizedBox(width: 4), const Icon(Icons.verified, color: Colors.blue, size: 20)]]),
           const SizedBox(height: 8),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             _stat('${posts.length}', 'منشورات'),
@@ -282,11 +313,17 @@ class _UserProfilePageState extends State<UserProfilePage> {
           const SizedBox(height: 8),
           Text('المستوى: ${getUserLevel(points)} | النقاط: $points'),
           const SizedBox(height: 12),
-          if (!isMe) FilledButton.icon(
-            onPressed: () async { await widget.data.toggleFollow(widget.accountId); await _loadStats(); },
-            style: FilledButton.styleFrom(backgroundColor: isFollowing ? Colors.grey : primary),
-            icon: Icon(isFollowing ? Icons.person_remove : Icons.person_add),
-            label: Text(isFollowing ? 'إلغاء المتابعة' : 'متابعة'),
+          if (!isMe) Container(
+            decoration: BoxDecoration(gradient: isFollowing ? LinearGradient(colors: [Colors.grey, Colors.grey.shade400]) : ThemeManager.instance.getButtonGradient(), borderRadius: BorderRadius.circular(30), boxShadow: ThemeManager.instance.getGlowShadow()),
+            child: Material(color: Colors.transparent, child: InkWell(
+              borderRadius: BorderRadius.circular(30),
+              onTap: () async { await widget.data.toggleFollow(widget.accountId); await _loadStats(); },
+              child: Padding(padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12), child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(isFollowing ? Icons.person_remove : Icons.person_add, color: Colors.white, size: 18),
+                const SizedBox(width: 6),
+                Text(isFollowing ? 'إلغاء المتابعة' : 'متابعة', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ])),
+            )),
           ),
         ])),
         const Divider(),
@@ -311,8 +348,12 @@ class PrivateMessagesPage extends StatelessWidget {
     return AnimatedBuilder(animation: data, builder: (context, _) {
       final others = data.players.where((p) => parseInt(p['account_id']) != data.currentAccountId).toList();
       return Scaffold(appBar: AppBar(title: const Text('الرسائل')), body: others.isEmpty ? const Center(child: Text('لا يوجد مستخدمون.')) : ListView.builder(itemCount: others.length, itemBuilder: (_, i) {
-        final p = others[i]; final avatar = clean(p['avatar_url']); final name = clean(p['name']); final userId = parseInt(p['account_id']);
-        final unread = data.unreadMessageCounts[userId] ?? 0; final isVerified = data.isPlayerAdmin(userId);
+        final p = others[i];
+        final avatar = clean(p['avatar_url']);
+        final name = data.displayNameForAccount(p['account_id']);
+        final userId = parseInt(p['account_id']);
+        final unread = data.unreadMessageCounts[userId] ?? 0;
+        final isVerified = data.isPlayerAdmin(userId);
         return Card(child: ListTile(
           leading: GestureDetector(onTap: () => showAvatarDialog(context, avatar, name), child: CircleAvatar(backgroundColor: AppColors.gold, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, color: Colors.black) : null)),
           title: Row(children: [Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(name))), if (isVerified) ...[const SizedBox(width: 4), const Icon(Icons.verified, color: Colors.blue, size: 14)]]),
@@ -332,27 +373,34 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final ctrl = TextEditingController(); final supabase = Supabase.instance.client;
-  RealtimeChannel? _channel; bool _loading = true;
+  final ctrl = TextEditingController();
+  final supabase = Supabase.instance.client;
+  RealtimeChannel? _channel;
+  bool _loading = true;
 
   @override
   void initState() { super.initState(); _init(); }
+
   Future<void> _init() async {
     widget.data.privateMessages.clear();
     await widget.data.loadPrivateMessages(parseInt(widget.other['account_id']));
     if (mounted) setState(() => _loading = false);
     _channel = supabase.channel('chat_${widget.data.currentAccountId}_${widget.other['account_id']}').onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'private_messages', callback: (payload) {
-      final m = payload.newRecord; final s = parseInt(m['sender_id']); final r = parseInt(m['receiver_id']);
+      final m = payload.newRecord;
+      final s = parseInt(m['sender_id']);
+      final r = parseInt(m['receiver_id']);
       if ((s == widget.data.currentAccountId && r == parseInt(widget.other['account_id'])) || (s == parseInt(widget.other['account_id']) && r == widget.data.currentAccountId)) widget.data.loadPrivateMessages(parseInt(widget.other['account_id']));
     }).subscribe();
   }
+
   Future<void> _send() async { if (ctrl.text.trim().isEmpty) return; if (await widget.data.sendPrivateMessage(parseInt(widget.other['account_id']), ctrl.text)) ctrl.clear(); }
   @override
   void dispose() { _channel?.unsubscribe(); ctrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
-    final otherName = clean(widget.other['name']); final otherAvatar = clean(widget.other['avatar_url']);
+    final otherName = widget.data.displayNameForAccount(widget.other['account_id']);
+    final otherAvatar = clean(widget.other['avatar_url']);
     return Scaffold(
       appBar: AppBar(title: Row(children: [
         GestureDetector(onTap: () => showAvatarDialog(context, otherAvatar, otherName), child: CircleAvatar(radius: 16, backgroundImage: otherAvatar.isNotEmpty ? CachedNetworkImageProvider(otherAvatar) : null, child: otherAvatar.isEmpty ? const Icon(Icons.person, size: 16) : null)),
@@ -362,7 +410,8 @@ class _ChatScreenState extends State<ChatScreen> {
         Expanded(child: AnimatedBuilder(animation: widget.data, builder: (context, _) {
           final msgs = widget.data.privateMessages;
           return ListView.builder(reverse: true, padding: const EdgeInsets.all(10), itemCount: msgs.length, itemBuilder: (_, i) {
-            final m = msgs[i]; final isMe = parseInt(m['sender_id']) == widget.data.currentAccountId;
+            final m = msgs[i];
+            final isMe = parseInt(m['sender_id']) == widget.data.currentAccountId;
             return Align(alignment: isMe ? Alignment.centerRight : Alignment.centerLeft, child: Card(color: isMe ? AppColors.gold.withOpacity(0.2) : AppColors.cardBlack, child: Padding(padding: const EdgeInsets.all(10), child: Text(clean(m['message'])))));
           });
         })),
@@ -387,7 +436,8 @@ class GalleryPage extends StatefulWidget {
 
 class _GalleryPageState extends State<GalleryPage> {
   Future<void> pickAndUpload() async {
-    final picker = ImagePicker(); final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
     if (picked == null || !mounted) return;
     final c = TextEditingController();
     final confirm = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('إضافة صورة'), content: TextField(controller: c, maxLines: 3, decoration: const InputDecoration(labelText: 'تعليق')), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('نشر'))]));
@@ -407,12 +457,21 @@ class _GalleryPageState extends State<GalleryPage> {
     return Scaffold(appBar: AppBar(title: const Text('معرض الصور'), actions: [IconButton(onPressed: () => widget.data.loadGallery(), icon: const Icon(Icons.refresh))]), floatingActionButton: FloatingActionButton.extended(onPressed: pickAndUpload, icon: const Icon(Icons.add_a_photo), label: const Text('أضف صورة')), body: AnimatedBuilder(animation: widget.data, builder: (context, _) {
       return RefreshIndicator(onRefresh: widget.data.loadGallery, child: widget.data.gallery.isEmpty ? ListView(children: const [SizedBox(height: 200), Center(child: Text('لا توجد صور'))]) : ListView.builder(padding: const EdgeInsets.all(16), itemCount: widget.data.gallery.length, itemBuilder: (_, index) {
         final item = widget.data.gallery[index];
-        return Container(margin: const EdgeInsets.only(bottom: 24), padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: AppColors.cardBlack, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.goldDark, width: 3)), child: Column(children: [
-          AspectRatio(aspectRatio: 1.15, child: CachedNetworkImage(imageUrl: clean(item['image_url']), fit: BoxFit.cover, errorWidget: (_, __, ___) => const Icon(Icons.broken_image, color: AppColors.gold))),
-          const SizedBox(height: 8),
-          Text(clean(item['user_name']), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)),
-          if (clean(item['caption']).isNotEmpty) Text(clean(item['caption']), textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
-        ]));
+        final imgUrl = clean(item['image_url']);
+        final owner = widget.data.displayNameForAccount(item['account_id']);
+        return Container(
+          margin: const EdgeInsets.only(bottom: 24), padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(gradient: LinearGradient(colors: [ThemeManager.instance.primaryColor.withOpacity(0.2), AppColors.cardBlack]), borderRadius: BorderRadius.circular(16), border: Border.all(color: ThemeManager.instance.primaryColor.withOpacity(0.5), width: 2), boxShadow: ThemeManager.instance.getGlowShadow()),
+          child: Column(children: [
+            AspectRatio(aspectRatio: 1.15, child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: imgUrl, fit: BoxFit.cover, errorWidget: (_, __, ___) => const Icon(Icons.broken_image, color: AppColors.gold)))),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: Text(owner, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold))),
+              IconButton(icon: const Icon(Icons.download, color: AppColors.gold), onPressed: () async { final ok = await downloadImageToGallery(imgUrl, fileName: 'mr_otaku_gallery'); if (context.mounted) showSnack(context, ok ? '✅ تم الحفظ' : 'تعذر الحفظ'); }),
+            ]),
+            if (clean(item['caption']).isNotEmpty) Text(clean(item['caption']), textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
+          ]),
+        );
       }));
     }));
   }
@@ -424,7 +483,9 @@ class RewardsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(appBar: AppBar(title: const Text('خزانة الجوائز')), body: AnimatedBuilder(animation: data, builder: (context, _) => ListView.builder(padding: const EdgeInsets.all(16), itemCount: allRewards.length, itemBuilder: (_, i) {
-      final r = allRewards[i]; final unlocked = data.currentPoints >= r.requiredPoints; final claimed = data.hasReward(r.name);
+      final r = allRewards[i];
+      final unlocked = data.currentPoints >= r.requiredPoints;
+      final claimed = data.hasReward(r.name);
       return Card(child: ListTile(leading: Text(r.icon, style: const TextStyle(fontSize: 40)), title: Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)), subtitle: Text('يتطلب ${r.requiredPoints} نقطة'), trailing: claimed ? const Icon(Icons.check_circle, color: Colors.green, size: 30) : unlocked ? FilledButton(onPressed: () async { if (await data.claimReward(r.name, r.icon) && context.mounted) showSnack(context, 'مبروك!'); }, child: const Text('استلام')) : const Icon(Icons.lock, color: Colors.grey)));
     })));
   }
