@@ -86,7 +86,6 @@ class AppData extends ChangeNotifier {
     return importantNewsUpdatedAt != lastSeen;
   }
 
-  // ✅ الستوري النشط (لم ينته وقتها)
   List<Map<String, dynamic>> get activeStories {
     final now = DateTime.now().toUtc();
     return stories.where((s) {
@@ -178,7 +177,6 @@ class AppData extends ChangeNotifier {
     _lastSeenNewsId = LocalCache.loadString('last_seen_news_id') ?? '';
     _lastSeenQuizCount = LocalCache.loadInt('last_seen_quiz_count') ?? 0;
     _lastSeenGalleryCount = LocalCache.loadInt('last_seen_gallery_count') ?? 0;
-    // استرجاع الستوري المشاهدة محلياً
     final viewedList = prefs.getStringList('mr_otaku_viewed_stories');
     if (viewedList != null) _viewedStoryIds.addAll(viewedList);
   }
@@ -299,11 +297,7 @@ class AppData extends ChangeNotifier {
       if (videoFile != null) videoUrl = await uploadGeneralVideo(videoFile);
 
       await supabase.from('posts').insert({
-        'account_id': currentAccountId,
-        'user_name': currentDisplayName,
-        'content': content.trim(),
-        'image_url': imageUrl,
-        'video_url': videoUrl,
+        'account_id': currentAccountId, 'user_name': currentDisplayName, 'content': content.trim(), 'image_url': imageUrl, 'video_url': videoUrl,
       });
 
       if (videoFile != null) await _incrementVideoCount();
@@ -362,12 +356,7 @@ class AppData extends ChangeNotifier {
       await supabase.storage.from('news-images').upload(path, imageFile);
       final url = supabase.storage.from('news-images').getPublicUrl(path);
       final expires = DateTime.now().toUtc().add(const Duration(hours: 24)).toIso8601String();
-      await supabase.from('stories').insert({
-        'account_id': currentAccountId,
-        'user_name': currentDisplayName,
-        'image_url': url,
-        'expires_at': expires,
-      });
+      await supabase.from('stories').insert({'account_id': currentAccountId, 'user_name': currentDisplayName, 'image_url': url, 'expires_at': expires});
       await loadStories();
       return true;
     } catch (e) { debugPrint('Add story error: $e'); return false; }
@@ -464,6 +453,7 @@ class AppData extends ChangeNotifier {
   Future<void> loadCommentCounts() async { try { final result = await supabase.from('news_comments').select('news_id'); commentCounts.clear(); for (final item in result) { final id = item['news_id']; commentCounts[id] = (commentCounts[id] ?? 0) + 1; } } catch (e) {} }
   Future<List<Map<String, dynamic>>> getComments(dynamic newsId) async { try { final result = await supabase.from('news_comments').select().eq('news_id', newsId).order('created_at', ascending: false); return List<Map<String, dynamic>>.from(result); } catch (e) { return []; } }
 
+  // ✅ مضاف: account_id عند حفظ التعليق
   Future<bool> addComment(dynamic newsId, String userName, String text, {String? replyTo, File? imageFile}) async {
     if ((text.trim().isEmpty && imageFile == null)) return false;
     try {
@@ -471,7 +461,13 @@ class AppData extends ChangeNotifier {
       String? imageUrl;
       if (imageFile != null) imageUrl = await uploadGeneralImage(imageFile, 'comments');
       await supabase.from('news_comments').insert({
-        'news_id': newsId, 'client_id': clientId, 'user_name': currentDisplayName, 'comment_text': text.trim(), 'reply_to': replyTo, 'image_url': imageUrl,
+        'news_id': newsId,
+        'client_id': clientId,
+        'account_id': currentAccountId,
+        'user_name': currentDisplayName,
+        'comment_text': text.trim(),
+        'reply_to': replyTo,
+        'image_url': imageUrl,
       });
       commentCounts[newsId] = (commentCounts[newsId] ?? 0) + 1; notifyListeners(); return true;
     } catch (e) { return false; }
