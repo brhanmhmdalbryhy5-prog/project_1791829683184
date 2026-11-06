@@ -96,7 +96,7 @@ class _HomePageState extends State<HomePage> {
 }
 
 // =======================================================
-// 2. الرئيسية (مع Stories الحقيقية)
+// 2. الرئيسية
 // =======================================================
 class HomeTab extends StatefulWidget {
   final AppData data;
@@ -504,7 +504,7 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // =======================================================
-// 4. صفحة إنشاء منشور
+// 4. صفحة إنشاء منشور (TikTok-style: تخرج فوراً + تنشر في الخلفية)
 // =======================================================
 class CreatePostPage extends StatefulWidget {
   const CreatePostPage({super.key});
@@ -516,19 +516,23 @@ class _CreatePostPageState extends State<CreatePostPage> {
   final textCtrl = TextEditingController();
   File? _image;
   File? _video;
-  bool _loading = false;
   int _remainingVideos = 5;
   bool _loadingInfo = true;
 
   @override
-  void initState() { super.initState(); _loadRemaining(); }
+  void initState() {
+    super.initState();
+    _loadRemaining();
+  }
 
   Future<void> _loadRemaining() async {
     final data = context.findAncestorWidgetOfExactType<HomePage>()?.data;
     if (data != null) {
       final remaining = await data.getRemainingVideos();
       if (mounted) setState(() { _remainingVideos = remaining; _loadingInfo = false; });
-    } else { if (mounted) setState(() => _loadingInfo = false); }
+    } else {
+      if (mounted) setState(() => _loadingInfo = false);
+    }
   }
 
   Future<void> _pickImage() async {
@@ -538,24 +542,132 @@ class _CreatePostPageState extends State<CreatePostPage> {
   }
 
   Future<void> _pickVideo() async {
-    if (_remainingVideos <= 0) { showSnack(context, 'وصلت للحد الأقصى: 5 فيديوهات شهرياً.'); return; }
+    if (_remainingVideos <= 0) {
+      showSnack(context, 'وصلت للحد الأقصى: 5 فيديوهات شهرياً.');
+      return;
+    }
     final picker = ImagePicker();
     final picked = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 5));
     if (picked != null) {
       final size = await File(picked.path).length();
-      if (size > 5 * 1024 * 1024) { if (mounted) showSnack(context, 'الفيديو كبير (${(size / 1024 / 1024).toStringAsFixed(1)}MB). الحد 5MB.'); return; }
+      if (size > 5 * 1024 * 1024) {
+        if (mounted) showSnack(context, 'الفيديو كبير (${(size / 1024 / 1024).toStringAsFixed(1)}MB). الحد 5MB.');
+        return;
+      }
       setState(() { _video = File(picked.path); _image = null; });
     }
   }
 
+  /// ✅ النشر الفوري: يخرج من الصفحة فوراً، والرفع يكمل في الخلفية (TikTok style)
   Future<void> _post(AppData data) async {
     if (textCtrl.text.trim().isEmpty && _image == null && _video == null) return;
-    setState(() => _loading = true);
-    final error = await data.addPost(textCtrl.text, _image, videoFile: _video);
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (error == null) { Navigator.pop(context); showSnack(context, 'تم النشر!'); }
-    else { showSnack(context, error); }
+
+    // 1) حفظ البيانات قبل إغلاق الصفحة
+    final content = textCtrl.text;
+    final image = _image;
+    final video = _video;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    // 2) إغلاق الصفحة فوراً
+    navigator.pop();
+
+    // 3) عرض "جاري النشر..." في الأسفل
+    messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: const [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'جاري النشر...',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        duration: const Duration(minutes: 5),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.cardBlack,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: ThemeManager.instance.primaryColor.withOpacity(0.5)),
+        ),
+      ),
+    );
+
+    // 4) الرفع في الخلفية
+    try {
+      final error = await data.addPost(content, image, videoFile: video);
+
+      messenger.hideCurrentSnackBar();
+
+      if (error == null) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text(
+                  'تم النشر بنجاح!',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    error,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('❌ خطأ غير متوقع: $e'),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    textCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -567,44 +679,104 @@ class _CreatePostPageState extends State<CreatePostPage> {
       appBar: AppBar(title: const Text('نشر منشور')),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(children: [
-          if (!_loadingInfo)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: canPostVideo ? LinearGradient(colors: [Colors.green.withOpacity(0.3), Colors.green.withOpacity(0.1)]) : LinearGradient(colors: [Colors.red.withOpacity(0.3), Colors.red.withOpacity(0.1)]),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: canPostVideo ? Colors.green : Colors.red),
+        child: Column(
+          children: [
+            if (!_loadingInfo)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: canPostVideo
+                      ? LinearGradient(colors: [Colors.green.withOpacity(0.3), Colors.green.withOpacity(0.1)])
+                      : LinearGradient(colors: [Colors.red.withOpacity(0.3), Colors.red.withOpacity(0.1)]),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: canPostVideo ? Colors.green : Colors.red),
+                ),
+                child: Row(
+                  children: [
+                    Icon(canPostVideo ? Icons.videocam : Icons.block, color: canPostVideo ? Colors.green : Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        canPostVideo
+                            ? 'متبقي لك $_remainingVideos فيديو من 5 هذا الشهر'
+                            : 'وصلت للحد الأقصى (5 فيديوهات). يتجدد الشهر القادم.',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: canPostVideo ? Colors.green : Colors.red),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Row(children: [
-                Icon(canPostVideo ? Icons.videocam : Icons.block, color: canPostVideo ? Colors.green : Colors.red),
-                const SizedBox(width: 8),
-                Expanded(child: Text(canPostVideo ? 'متبقي لك $_remainingVideos فيديو من 5 هذا الشهر' : 'وصلت للحد الأقصى (5 فيديوهات). يتجدد الشهر القادم.', style: TextStyle(fontWeight: FontWeight.bold, color: canPostVideo ? Colors.green : Colors.red))),
-              ]),
+            const SizedBox(height: 12),
+            TextField(
+              controller: textCtrl,
+              maxLines: 5,
+              decoration: const InputDecoration(hintText: 'بماذا تفكر يا أوتاكو؟'),
             ),
-          const SizedBox(height: 12),
-          TextField(controller: textCtrl, maxLines: 5, decoration: const InputDecoration(hintText: 'بماذا تفكر يا أوتاكو؟')),
-          const SizedBox(height: 12),
-          if (_image != null) Stack(alignment: Alignment.topRight, children: [
-            Image.file(_image!, height: 200, width: double.infinity, fit: BoxFit.cover),
-            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _image = null)),
-          ]),
-          if (_video != null) Stack(alignment: Alignment.topRight, children: [
-            Container(height: 200, width: double.infinity, color: Colors.black, child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.videocam, color: AppColors.gold, size: 60), Text('فيديو 5 ثوان جاهز', style: TextStyle(color: AppColors.gold))]))),
-            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _video = null)),
-          ]),
-          const SizedBox(height: 12),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            OutlinedButton.icon(onPressed: _pickImage, icon: const Icon(Icons.image, size: 18), label: const Text('صورة')),
-            OutlinedButton.icon(onPressed: canPostVideo ? _pickVideo : null, icon: Icon(Icons.videocam, size: 18, color: canPostVideo ? null : Colors.grey), label: Text('فيديو ($_remainingVideos/5)', style: TextStyle(color: canPostVideo ? null : Colors.grey))),
-          ]),
-          const SizedBox(height: 12),
-          SizedBox(width: double.infinity, child: FilledButton.icon(
-            onPressed: _loading ? null : () { if (data != null) _post(data); },
-            icon: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send),
-            label: const Text('نشر'),
-          )),
-        ]),
+            const SizedBox(height: 12),
+            if (_image != null)
+              Stack(
+                alignment: Alignment.topRight,
+                children: [
+                  Image.file(_image!, height: 200, width: double.infinity, fit: BoxFit.cover),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    onPressed: () => setState(() => _image = null),
+                  ),
+                ],
+              ),
+            if (_video != null)
+              Stack(
+                alignment: Alignment.topRight,
+                children: [
+                  Container(
+                    height: 200,
+                    width: double.infinity,
+                    color: Colors.black,
+                    child: const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.videocam, color: AppColors.gold, size: 60),
+                          Text('فيديو 5 ثوان جاهز', style: TextStyle(color: AppColors.gold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    onPressed: () => setState(() => _video = null),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _pickImage,
+                  icon: const Icon(Icons.image, size: 18),
+                  label: const Text('صورة'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: canPostVideo ? _pickVideo : null,
+                  icon: Icon(Icons.videocam, size: 18, color: canPostVideo ? null : Colors.grey),
+                  label: Text('فيديو ($_remainingVideos/5)', style: TextStyle(color: canPostVideo ? null : Colors.grey)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  if (data != null) _post(data);
+                },
+                icon: const Icon(Icons.send),
+                label: const Text('نشر'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
