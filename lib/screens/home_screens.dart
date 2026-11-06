@@ -16,6 +16,9 @@ import 'followers_page.dart';
 import 'stories_page.dart';
 import 'games_screens.dart';
 
+// =======================================================
+// 1. الحاوية الرئيسية
+// =======================================================
 class HomePage extends StatefulWidget {
   final AppData data;
   const HomePage({super.key, required this.data});
@@ -93,7 +96,7 @@ class _HomePageState extends State<HomePage> {
 }
 
 // =======================================================
-// الرئيسية
+// 2. الرئيسية (مع Stories الحقيقية)
 // =======================================================
 class HomeTab extends StatefulWidget {
   final AppData data;
@@ -138,11 +141,8 @@ class _HomeTabState extends State<HomeTab> {
         child: ListView(
           padding: const EdgeInsets.only(top: 8, bottom: 16),
           children: [
-            // ✅ Stories الحقيقية
             StoriesBar(data: widget.data),
             const SizedBox(height: 16),
-
-            // البطاقة البراقة
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
@@ -169,8 +169,6 @@ class _HomeTabState extends State<HomeTab> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // شريط الأخبار
             if (widget.data.news.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -199,8 +197,6 @@ class _HomeTabState extends State<HomeTab> {
                 ),
               ),
             const SizedBox(height: 16),
-
-            // الخبر المهم
             if (widget.data.importantNews.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -219,8 +215,6 @@ class _HomeTabState extends State<HomeTab> {
                 ),
               ),
             if (widget.data.importantNews.trim().isNotEmpty) const SizedBox(height: 16),
-
-            // المتصدر
             if (widget.data.leader != null)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -324,7 +318,7 @@ class _MiniStat extends StatelessWidget {
 }
 
 // =======================================================
-// صفحة حسابي (مع الإحصائيات القابلة للضغط)
+// 3. صفحة حسابي
 // =======================================================
 class ProfilePage extends StatefulWidget {
   final AppData data;
@@ -406,7 +400,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   ]),
                   Text('ID: ${widget.data.currentAccountId} | ${widget.data.currentLevel}'),
                   const SizedBox(height: 8),
-                  // ✅ إحصائيات قابلة للضغط (TikTok-style)
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     GestureDetector(
                       onTap: () => setState(() => _tab = 0),
@@ -426,7 +419,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   if (badge != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${badge.icon} ${badge.name}')),
                 ]),
               ),
-              // زر النشر البراق
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
@@ -512,7 +504,7 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // =======================================================
-// صفحة إنشاء منشور
+// 4. صفحة إنشاء منشور
 // =======================================================
 class CreatePostPage extends StatefulWidget {
   const CreatePostPage({super.key});
@@ -619,7 +611,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
 }
 
 // =======================================================
-// الخدمات
+// 5. الخدمات
 // =======================================================
 class ServicesPage extends StatelessWidget {
   final AppData data;
@@ -668,7 +660,7 @@ class ServiceTile extends StatelessWidget {
 }
 
 // =======================================================
-// إحصائياتي
+// 6. إحصائياتي
 // =======================================================
 class MyStatsPage extends StatelessWidget {
   final AppData data;
@@ -742,6 +734,7 @@ class SoundsPage extends StatefulWidget {
   @override
   State<SoundsPage> createState() => _SoundsPageState();
 }
+
 class _SoundsPageState extends State<SoundsPage> {
   bool _soundEnabled = true;
   @override
@@ -750,14 +743,28 @@ class _SoundsPageState extends State<SoundsPage> {
   Future<void> _toggle(bool v) async { final prefs = await SharedPreferences.getInstance(); await prefs.setBool('mr_otaku_sound_enabled', v); setState(() => _soundEnabled = v); if (v) await playClickSound(); }
   @override
   Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(title: const Text('أصوات التطبيق')), body: ListView(padding: const EdgeInsets.all(16), children: [
-      Card(child: SwitchListTile(title: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold), titleTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold), title_placeholder: null, subtitle: const Text('اهتزاز عند الضغط على الأزرار'), value: _soundEnabled, onChanged: _toggle, activeColor: AppColors.gold)),
-    ]));
+    return Scaffold(
+      appBar: AppBar(title: const Text('أصوات التطبيق')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: SwitchListTile(
+              title: const Text('الصوت/الاهتزاز', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)),
+              subtitle: const Text('اهتزاز عند الضغط على الأزرار'),
+              value: _soundEnabled,
+              onChanged: _toggle,
+              activeColor: AppColors.gold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 // =======================================================
-// الأخبار + التعليقات
+// 7. الأخبار + التعليقات
 // =======================================================
 class NewsPage extends StatelessWidget {
   final AppData data;
