@@ -117,26 +117,29 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
             final parsedId = accountId.text.trim().isEmpty ? null : int.tryParse(accountId.text.trim());
             final parsedPoints = int.tryParse(points.text.trim()) ?? 0;
             bool ok;
-            if (player == null) { ok = await widget.data.addPlayer(name.text, parsedPoints, accountId: parsedId); }
-            else { ok = await widget.data.updatePlayer(player['id'], name.text, parsedPoints, accountId: parsedId); }
-            // تحديث channel_name أيضاً
+            if (player == null) {
+              ok = await widget.data.addPlayer(name.text, parsedPoints, accountId: parsedId);
+            } else {
+              ok = await widget.data.updatePlayer(player['id'], name.text, parsedPoints, accountId: parsedId);
+            }
             if (ok && player != null && channel.text.trim().isNotEmpty) {
               try {
                 await widget.data.supabase.from('players').update({'channel_name': channel.text.trim()}).eq('id', player['id']);
                 await widget.data.loadData();
               } catch (_) {}
-            } else if (ok && player == null && channel.text.trim().isNotEmpty) {
-              try {
-                final newP = await widget.data.supabase.from('players').select('id').eq('name', name.text.trim()).maybeSingle();
-                if (newP != null) { await widget.data.supabase.from('players').update({'channel_name': channel.text.trim()}).eq('id', newP['id']); await widget.data.loadData(); }
-              } catch (_) {}
             }
-            if (context.mounted) { Navigator.pop(context); showSnack(context, ok ? 'تم حفظ الحساب.' : 'فشل الحفظ.'); }
+            if (context.mounted) {
+              Navigator.pop(context);
+              showSnack(context, ok ? 'تم حفظ الحساب.' : 'فشل الحفظ.');
+            }
           }, child: const Text('حفظ')),
         ],
       ),
     );
-    name.dispose(); channel.dispose(); points.dispose(); accountId.dispose();
+    name.dispose();
+    channel.dispose();
+    points.dispose();
+    accountId.dispose();
   }
 
   String _getUserStatus(Map<String, dynamic> player) {
@@ -145,7 +148,9 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
     try {
       final lastSeen = DateTime.parse(lastSeenStr).toLocal();
       return DateTime.now().difference(lastSeen).inMinutes < 3 ? 'online' : 'offline';
-    } catch (e) { return 'never'; }
+    } catch (e) {
+      return 'never';
+    }
   }
 
   @override
@@ -173,10 +178,19 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
             final displayName = widget.data.displayNameForAccount(player['account_id']);
             Color statusColor;
             String statusText;
-            if (!hasId) { statusColor = Colors.orange; statusText = '⚠️ بدون معرف'; }
-            else if (status == 'online') { statusColor = Colors.green; statusText = '🟢 يفتح التطبيق'; }
-            else if (status == 'offline') { statusColor = Colors.red; statusText = '🔴 خرج'; }
-            else { statusColor = Colors.grey; statusText = '⚪ لم يفتح أبداً'; }
+            if (!hasId) {
+              statusColor = Colors.orange;
+              statusText = '⚠️ بدون معرف';
+            } else if (status == 'online') {
+              statusColor = Colors.green;
+              statusText = '🟢 يفتح التطبيق';
+            } else if (status == 'offline') {
+              statusColor = Colors.red;
+              statusText = '🔴 خرج';
+            } else {
+              statusColor = Colors.grey;
+              statusText = '⚪ لم يفتح أبداً';
+            }
 
             return Card(child: ListTile(
               leading: Stack(children: [
@@ -238,7 +252,10 @@ class _ManageImportantNewsPageState extends State<ManageImportantNewsPage> {
     if (!confirm) return;
     final ok = await widget.data.clearImportantNews();
     if (!mounted) return;
-    if (ok) { controller.clear(); showSnack(context, 'تم الحذف.'); }
+    if (ok) {
+      controller.clear();
+      showSnack(context, 'تم الحذف.');
+    }
   }
 
   @override
@@ -254,7 +271,7 @@ class _ManageImportantNewsPageState extends State<ManageImportantNewsPage> {
 }
 
 // =======================================================
-// 4. معرض الصور
+// 4. معرض الصور — ✅ مصحح: data بدلاً من widget.data
 // =======================================================
 class ManageGalleryPage extends StatelessWidget {
   final AppData data;
@@ -268,7 +285,7 @@ class ManageGalleryPage extends StatelessWidget {
         return Card(clipBehavior: Clip.antiAlias, child: Column(children: [
           Image.network(clean(item['image_url']), width: double.infinity, height: 200, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox(height: 200, child: Icon(Icons.broken_image))),
           ListTile(
-            title: Text(widget.data.displayNameForAccount(item['account_id'])),
+            title: Text(data.displayNameForAccount(item['account_id'])),
             trailing: IconButton(onPressed: () async {
               final ok = await confirmDelete(context, 'هذه الصورة');
               if (ok) await data.deleteGalleryImage(item['id']);
@@ -294,7 +311,11 @@ class _ManageQuizResultsPageState extends State<ManageQuizResultsPage> {
   bool loading = true;
   @override
   void initState() { super.initState(); _load(); }
-  Future<void> _load() async { setState(() => loading = true); await widget.data.loadQuizResults(); if (mounted) setState(() => loading = false); }
+  Future<void> _load() async {
+    setState(() => loading = true);
+    await widget.data.loadQuizResults();
+    if (mounted) setState(() => loading = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -377,7 +398,7 @@ class _QuizEditorPageState extends State<QuizEditorPage> {
 }
 
 // =======================================================
-// 7. إدارة الأخبار (مع صورة + تأكيد)
+// 7. إدارة الأخبار
 // =======================================================
 class ManageNewsPage extends StatefulWidget {
   final AppData data;
@@ -395,7 +416,9 @@ class _ManageNewsPageState extends State<ManageNewsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('إدارة الأخبار')),
       floatingActionButton: FloatingActionButton(onPressed: () {
-        t.clear(); d.clear(); _image = null;
+        t.clear();
+        d.clear();
+        _image = null;
         showDialog(context: context, builder: (context) => StatefulBuilder(builder: (context, setState) {
           return AlertDialog(title: const Text('خبر جديد'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(controller: t, decoration: const InputDecoration(labelText: 'العنوان')),
@@ -409,7 +432,10 @@ class _ManageNewsPageState extends State<ManageNewsPage> {
             }, icon: const Icon(Icons.image), label: const Text('اختيار صورة')),
           ])), actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            FilledButton(onPressed: () async { await widget.data.addNews(t.text, d.text, imageFile: _image); if (context.mounted) Navigator.pop(context); }, child: const Text('نشر')),
+            FilledButton(onPressed: () async {
+              await widget.data.addNews(t.text, d.text, imageFile: _image);
+              if (context.mounted) Navigator.pop(context);
+            }, child: const Text('نشر')),
           ]);
         }));
       }, child: const Icon(Icons.add)),
@@ -441,13 +467,18 @@ class _ManageNotificationsPageState extends State<ManageNotificationsPage> {
     return Scaffold(appBar: AppBar(title: const Text('إرسال إشعار')), body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
       TextField(controller: t, decoration: const InputDecoration(labelText: 'العنوان')),
       TextField(controller: b, decoration: const InputDecoration(labelText: 'النص')),
-      FilledButton(onPressed: () async { await widget.data.addNotification(t.text, b.text); t.clear(); b.clear(); showSnack(context, 'تم الإرسال'); }, child: const Text('إرسال')),
+      FilledButton(onPressed: () async {
+        await widget.data.addNotification(t.text, b.text);
+        t.clear();
+        b.clear();
+        showSnack(context, 'تم الإرسال');
+      }, child: const Text('إرسال')),
     ])));
   }
 }
 
 // =======================================================
-// 9. إدارة الاستطلاعات (4 خيارات)
+// 9. إدارة الاستطلاعات
 // =======================================================
 class ManagePollPage extends StatefulWidget {
   final AppData data;
@@ -465,10 +496,18 @@ class _ManagePollPageState extends State<ManagePollPage> {
   Future<void> create() async {
     if (q.text.trim().isEmpty) return;
     final options = [o1.text, o2.text, o3.text, o4.text].map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-    if (options.length < 2) { showSnack(context, 'أدخل خيارين على الأقل.'); return; }
+    if (options.length < 2) {
+      showSnack(context, 'أدخل خيارين على الأقل.');
+      return;
+    }
     final ok = await widget.data.createPoll(q.text, options);
-    if (ok && context.mounted) { q.clear(); o1.clear(); o2.clear(); o3.clear(); o4.clear(); showSnack(context, 'تم إنشاء الاستطلاع.'); Navigator.pop(context); }
-    else { showSnack(context, 'تعذر الإنشاء.'); }
+    if (ok && context.mounted) {
+      q.clear(); o1.clear(); o2.clear(); o3.clear(); o4.clear();
+      showSnack(context, 'تم إنشاء الاستطلاع.');
+      Navigator.pop(context);
+    } else {
+      showSnack(context, 'تعذر الإنشاء.');
+    }
   }
 
   @override
@@ -507,7 +546,11 @@ class _ManageLatestPageState extends State<ManageLatestPage> {
       Padding(padding: const EdgeInsets.all(16), child: Column(children: [
         TextField(controller: t, decoration: const InputDecoration(labelText: 'العنوان')),
         TextField(controller: d, decoration: const InputDecoration(labelText: 'الوصف')),
-        FilledButton(onPressed: () async { await widget.data.addLatest(t.text, d.text); t.clear(); d.clear(); }, child: const Text('إضافة')),
+        FilledButton(onPressed: () async {
+          await widget.data.addLatest(t.text, d.text);
+          t.clear();
+          d.clear();
+        }, child: const Text('إضافة')),
       ])),
       Expanded(child: AnimatedBuilder(animation: widget.data, builder: (context, _) => ListView.builder(itemCount: widget.data.latest.length, itemBuilder: (_, i) => ListTile(
         title: Text(clean(widget.data.latest[i]['title'])),
@@ -521,21 +564,39 @@ class _ManageLatestPageState extends State<ManageLatestPage> {
 }
 
 // =======================================================
-// 11. رسائل المستخدمين
+// 11. رسائل المستخدمين — ✅ مصحح: قوس ناقص
 // =======================================================
 class ManageMessagesPage extends StatelessWidget {
   final AppData data;
   const ManageMessagesPage({super.key, required this.data});
   @override
   Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(title: const Text('رسائل المستخدمين')), body: AnimatedBuilder(animation: data, builder: (context, _) => ListView.builder(itemCount: data.messages.length, itemBuilder: (_, i) => Card(child: ListTile(
-      title: Text(clean(data.messages[i]['name'])),
-      subtitle: Text(clean(data.messages[i]['message'])),
-      trailing: IconButton(onPressed: () async {
-        final ok = await confirmDelete(context, 'رسالة "${clean(data.messages[i]['name'])}"');
-        if (ok) await data.deleteMessage(data.messages[i]['id']);
-      }, icon: const Icon(Icons.delete)),
-    ))));
+    return Scaffold(
+      appBar: AppBar(title: const Text('رسائل المستخدمين')),
+      body: AnimatedBuilder(
+        animation: data,
+        builder: (context, _) {
+          return ListView.builder(
+            itemCount: data.messages.length,
+            itemBuilder: (_, i) {
+              return Card(
+                child: ListTile(
+                  title: Text(clean(data.messages[i]['name'])),
+                  subtitle: Text(clean(data.messages[i]['message'])),
+                  trailing: IconButton(
+                    onPressed: () async {
+                      final ok = await confirmDelete(context, 'رسالة "${clean(data.messages[i]['name'])}"');
+                      if (ok) await data.deleteMessage(data.messages[i]['id']);
+                    },
+                    icon: const Icon(Icons.delete),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 }
 
