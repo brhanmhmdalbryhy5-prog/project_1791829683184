@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/colors.dart';
 import '../core/helpers.dart';
@@ -41,11 +42,10 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ تم إرجاع صفحة الأخبار (NewsPage) هنا
     final pages = [
       HomeTab(data: widget.data),
-      NewsPage(data: widget.data),     // 👈 صفحة الأخبار
-      PostsPage(data: widget.data),    // 👈 صفحة المنشورات
+      NewsPage(data: widget.data),
+      PostsPage(data: widget.data),
       PrivateMessagesPage(data: widget.data),
       ServicesPage(data: widget.data),
       ProfilePage(data: widget.data),
@@ -71,12 +71,7 @@ class _HomePageState extends State<HomePage> {
           ),
           const NavigationDestination(icon: Icon(Icons.post_add), selectedIcon: Icon(Icons.post_add, color: AppColors.gold), label: 'المنشورات'),
           NavigationDestination(
-            icon: Badge(
-              isLabelVisible: totalUnreadMessages > 0,
-              backgroundColor: Colors.red,
-              label: Text('$totalUnreadMessages'),
-              child: const Icon(Icons.forum_outlined),
-            ),
+            icon: Badge(isLabelVisible: totalUnreadMessages > 0, backgroundColor: Colors.red, label: Text('$totalUnreadMessages'), child: const Icon(Icons.forum_outlined)),
             selectedIcon: const Icon(Icons.forum),
             label: 'الرسائل',
           ),
@@ -92,7 +87,6 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ================= 1. الرئيسية (مع البحث) =================
 class HomeTab extends StatefulWidget {
   final AppData data;
   const HomeTab({super.key, required this.data});
@@ -124,11 +118,7 @@ class _HomeTabState extends State<HomeTab> {
       appBar: AppBar(
         title: const Text('مستر أوتاكو', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)),
         actions: [
-          // 🔍 أيقونة البحث الاحترافية
-          IconButton(
-            onPressed: () => showSearch(context: context, delegate: CustomSearchDelegate(widget.data)),
-            icon: const Icon(Icons.search, color: AppColors.gold),
-          ),
+          IconButton(onPressed: () => showSearch(context: context, delegate: CustomSearchDelegate(widget.data)), icon: const Icon(Icons.search, color: AppColors.gold)),
           IconButton(
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(data: widget.data))),
             icon: Badge(isLabelVisible: widget.data.unreadNotificationCount > 0, backgroundColor: AppColors.gold, label: Text(widget.data.unreadNotificationCount.toString(), style: const TextStyle(color: Colors.black)), child: const Icon(Icons.notifications)),
@@ -163,7 +153,6 @@ class _HomeTabState extends State<HomeTab> {
               ]),
             ),
             const SizedBox(height: 16),
-            
             if (widget.data.news.isNotEmpty)
               SizedBox(
                 height: 190,
@@ -189,7 +178,6 @@ class _HomeTabState extends State<HomeTab> {
                 ),
               ),
             const SizedBox(height: 16),
-            
             if (widget.data.importantNews.trim().isNotEmpty)
               Container(
                 decoration: BoxDecoration(color: AppColors.black, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.getColor(9), width: 2)),
@@ -205,7 +193,6 @@ class _HomeTabState extends State<HomeTab> {
                 ]),
               ),
             if (widget.data.importantNews.trim().isNotEmpty) const SizedBox(height: 16),
-
             if (widget.data.leader != null)
               Card(
                 color: AppColors.getColor(4).withOpacity(0.1),
@@ -223,7 +210,6 @@ class _HomeTabState extends State<HomeTab> {
   }
 }
 
-// 🔍 كلاس البحث الاحترافي
 class CustomSearchDelegate extends SearchDelegate {
   final AppData data;
   CustomSearchDelegate(this.data);
@@ -233,13 +219,10 @@ class CustomSearchDelegate extends SearchDelegate {
     appBarTheme: const AppBarTheme(backgroundColor: AppColors.black, iconTheme: IconThemeData(color: AppColors.gold)),
     inputDecorationTheme: const InputDecorationTheme(border: InputBorder.none, hintStyle: TextStyle(color: Colors.grey)),
   );
-
   @override
   List<Widget>? buildActions(BuildContext context) => [IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')];
-
   @override
   Widget? buildLeading(BuildContext context) => IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, null));
-
   @override
   Widget buildResults(BuildContext context) => _buildSearchResults();
   @override
@@ -248,24 +231,17 @@ class CustomSearchDelegate extends SearchDelegate {
   Widget _buildSearchResults() {
     final players = data.players.where((p) => clean(p['name']).contains(query)).toList();
     final posts = data.posts.where((p) => clean(p['content']).contains(query)).toList();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (players.isNotEmpty) ...[
-          const Text('المستخدمون:', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 18)),
-          ...players.map((p) => ListTile(
-            leading: CircleAvatar(backgroundImage: clean(p['avatar_url']).isNotEmpty ? CachedNetworkImageProvider(clean(p['avatar_url'])) : null, child: clean(p['avatar_url']).isEmpty ? const Icon(Icons.person) : null),
-            title: Text(clean(p['name'])),
-          )),
-        ],
-        if (posts.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          const Text('المنشورات:', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 18)),
-          ...posts.map((p) => Card(child: ListTile(title: Text(clean(p['content']), maxLines: 2, overflow: TextOverflow.ellipsis)))),
-        ]
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      if (players.isNotEmpty) ...[
+        const Text('المستخدمون:', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 18)),
+        ...players.map((p) => ListTile(leading: CircleAvatar(backgroundImage: clean(p['avatar_url']).isNotEmpty ? CachedNetworkImageProvider(clean(p['avatar_url'])) : null, child: clean(p['avatar_url']).isEmpty ? const Icon(Icons.person) : null), title: Text(clean(p['name'])))),
       ],
-    );
+      if (posts.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        const Text('المنشورات:', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 18)),
+        ...posts.map((p) => Card(child: ListTile(title: Text(clean(p['content']), maxLines: 2, overflow: TextOverflow.ellipsis)))),
+      ]
+    ]);
   }
 }
 
@@ -281,7 +257,7 @@ class _MiniStat extends StatelessWidget {
   }
 }
 
-// ================= 2. صفحة حسابي =================
+// ================= صفحة حسابي =================
 class ProfilePage extends StatefulWidget {
   final AppData data;
   const ProfilePage({super.key, required this.data});
@@ -336,9 +312,7 @@ class _ProfilePageState extends State<ProfilePage> {
         final myPosts = widget.data.myPosts;
 
         return Scaffold(
-          appBar: AppBar(title: const Text('حسابي'), actions: [
-            IconButton(onPressed: () => logout(context), icon: const Icon(Icons.logout, color: Colors.red)),
-          ]),
+          appBar: AppBar(title: const Text('حسابي'), actions: [IconButton(onPressed: () => logout(context), icon: const Icon(Icons.logout, color: Colors.red))]),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -366,9 +340,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 12),
               if (widget.data.isAdmin)
                 ServiceTile(icon: Icons.admin_panel_settings, title: 'لوحة الإدارة', subtitle: 'إدارة التطبيق', colorIndex: 11, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPanelPage(data: widget.data)))),
-              
               const SizedBox(height: 16),
-              
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -386,7 +358,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 16),
-              
               const Text('منشوراتي', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.gold)),
               const SizedBox(height: 10),
               if (myPosts.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لم تقم بنشر أي شيء بعد.')))
@@ -399,7 +370,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-// ================= الخدمات =================
+// ================= الخدمات (مع 5 أقسام جديدة) =================
 class ServicesPage extends StatelessWidget {
   final AppData data;
   const ServicesPage({super.key, required this.data});
@@ -411,11 +382,20 @@ class ServicesPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ServiceTile(icon: Icons.emoji_events, title: 'خزانة الجوائز', subtitle: 'شاهد الجوائز التي حصلت عليها', colorIndex: 1, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RewardsPage(data: data)))),
-          ServiceTile(icon: Icons.photo_library, title: 'معرض الصور', subtitle: 'شارك صورك المفضلة مع المجتمع', badge: data.hasNewGallery, colorIndex: 3, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryPage(data: data))).then((_) => data.markGallerySeen())),
+          // === 🆕 إحصائياتي ===
+          ServiceTile(icon: Icons.bar_chart, title: 'إحصائياتي', subtitle: 'شاهد نشاطك بالأرقام', colorIndex: 0, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MyStatsPage(data: data)))),
+          // === 🆕 شهادات الإنجاز ===
+          ServiceTile(icon: Icons.workspace_premium, title: 'شهادات الإنجاز', subtitle: 'شهاداتك التي حصلت عليها', colorIndex: 6, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CertificatesPage(data: data)))),
+          // === 🆕 لوحة التقدم ===
+          ServiceTile(icon: Icons.trending_up, title: 'لوحة التقدم', subtitle: 'تقدمك نحو الشارة القادمة', colorIndex: 2, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProgressPage(data: data)))),
+          // === 🆕 أصوات التطبيق ===
+          ServiceTile(icon: Icons.volume_up, title: 'أصوات التطبيق', subtitle: 'تشغيل أو إيقاف أصوات النقر', colorIndex: 5, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SoundsPage()))),
+          // === الموجودة ===
+          ServiceTile(icon: Icons.emoji_events, title: 'خزانة الجوائز', subtitle: 'الجوائز المتاحة لك', colorIndex: 1, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RewardsPage(data: data)))),
+          ServiceTile(icon: Icons.photo_library, title: 'معرض الصور', subtitle: 'شارك صورك المفضلة', badge: data.hasNewGallery, colorIndex: 3, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryPage(data: data))).then((_) => data.markGallerySeen())),
           ServiceTile(icon: Icons.quiz, title: 'لعبة الأسئلة', subtitle: 'ثلاثة أنواع من الأسئلة', badge: data.hasNewQuiz, colorIndex: 4, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => QuestionsHubPage(data: data)))),
-          ServiceTile(icon: Icons.leaderboard, title: 'المتصدرون', subtitle: 'شاهد ترتيب لاعبي الأوتاكو', colorIndex: 7, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LeaderboardPage(data: data)))),
-          ServiceTile(icon: Icons.message, title: 'إرسال رسالة للإدارة', subtitle: 'تواصل مع إدارة مستر أوتاكو', colorIndex: 9, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SendMessagePage(data: data)))),
+          ServiceTile(icon: Icons.leaderboard, title: 'المتصدرون', subtitle: 'ترتيب لاعبي الأوتاكو', colorIndex: 7, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LeaderboardPage(data: data)))),
+          ServiceTile(icon: Icons.message, title: 'إرسال رسالة للإدارة', subtitle: 'تواصل مع الإدارة', colorIndex: 9, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SendMessagePage(data: data)))),
         ],
       ),
     );
@@ -441,7 +421,223 @@ class ServiceTile extends StatelessWidget {
   }
 }
 
-// ================= الأخبار =================
+// ================= 🆕 صفحة إحصائياتي =================
+class MyStatsPage extends StatelessWidget {
+  final AppData data;
+  const MyStatsPage({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('إحصائياتي')),
+      body: AnimatedBuilder(
+        animation: data,
+        builder: (context, _) {
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _statCard('📝', 'منشوراتي', '${data.myPostsCount}', 'منشور'),
+              _statCard('❤️', 'الإعجابات المستلمة', '${data.myReceivedLikes}', 'إعجاب'),
+              _statCard('⭐', 'نقاطي', '${data.currentPoints}', 'نقطة'),
+              _statCard('🎖️', 'المستوى', data.currentLevel, ''),
+              _statCard('🏅', 'الجوائز', '${data.userRewards.length}', 'جائزة'),
+              _statCard('👑', 'الشارة الحالية', data.currentBadge?.name ?? 'لا توجد', data.currentBadge?.icon ?? ''),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _statCard(String icon, String title, String value, String suffix) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: Text(icon, style: const TextStyle(fontSize: 40)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)),
+        trailing: Text('$value $suffix', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+      ),
+    );
+  }
+}
+
+// ================= 🆕 صفحة شهادات الإنجاز =================
+class CertificatesPage extends StatelessWidget {
+  final AppData data;
+  const CertificatesPage({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('شهادات الإنجاز')),
+      body: AnimatedBuilder(
+        animation: data,
+        builder: (context, _) {
+          final certs = buildCertificates(
+            postsCount: data.myPostsCount,
+            receivedLikes: data.myReceivedLikes,
+            points: data.currentPoints,
+            level: data.currentLevel,
+          );
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: certs.length,
+            itemBuilder: (_, i) {
+              final c = certs[i];
+              final color = c.unlocked ? AppColors.gold : Colors.grey;
+              return Card(
+                color: c.unlocked ? AppColors.getColor(6).withOpacity(0.15) : AppColors.cardBlack,
+                child: ListTile(
+                  leading: Container(
+                    decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: color, width: 2)),
+                    padding: const EdgeInsets.all(8),
+                    child: Text(c.icon, style: TextStyle(fontSize: 32, color: c.unlocked ? null : Colors.grey)),
+                  ),
+                  title: Text(c.title, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+                  subtitle: Text(c.description, style: const TextStyle(fontSize: 12)),
+                  trailing: Icon(c.unlocked ? Icons.verified : Icons.lock, color: color, size: 28),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ================= 🆕 لوحة التقدم =================
+class ProgressPage extends StatelessWidget {
+  final AppData data;
+  const ProgressPage({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('لوحة التقدم')),
+      body: AnimatedBuilder(
+        animation: data,
+        builder: (context, _) {
+          final points = data.currentPoints;
+          final nextBadge = data.nextBadge;
+          final currentBadge = data.currentBadge;
+          final currentBadgePts = currentBadge?.points ?? 0;
+          final nextBadgePts = nextBadge?.points ?? points;
+          final range = nextBadgePts - currentBadgePts;
+          final progress = range > 0 ? ((points - currentBadgePts) / range).clamp(0.0, 1.0) : 1.0;
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(children: [
+                    Text('نقاطك الحالية', style: TextStyle(color: Colors.grey.shade400)),
+                    const SizedBox(height: 8),
+                    Text('$points', style: const TextStyle(fontSize: 60, fontWeight: FontWeight.bold, color: AppColors.gold)),
+                    const SizedBox(height: 8),
+                    Text('المستوى: ${data.currentLevel}', style: const TextStyle(fontSize: 18, color: Colors.white)),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (nextBadge != null)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Text(currentBadge?.icon ?? '', style: const TextStyle(fontSize: 32)),
+                        const Spacer(),
+                        Text(nextBadge.icon, style: const TextStyle(fontSize: 32)),
+                      ]),
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 20,
+                          backgroundColor: Colors.grey.shade800,
+                          valueColor: AlwaysStoppedAnimation(AppColors.getColor(2)),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(child: Text('${(progress * 100).toStringAsFixed(0)}%', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                      const SizedBox(height: 4),
+                      Center(child: Text('الشارة القادمة: ${nextBadge.name} (${nextBadgePts - points} نقطة متبقية)', style: const TextStyle(fontSize: 12))),
+                    ]),
+                  ),
+                )
+              else
+                const Card(child: Padding(padding: EdgeInsets.all(20), child: Center(child: Text('🏆 وصلت لأعلى شارة! أنت أسطورة!')))),
+
+              const SizedBox(height: 16),
+              const Text('الشارات القادمة:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.gold)),
+              const SizedBox(height: 8),
+              ...otakuBadges.where((b) => b.points > points).take(5).map((b) => Card(
+                child: ListTile(
+                  leading: Text(b.icon, style: const TextStyle(fontSize: 30)),
+                  title: Text(b.name, style: const TextStyle(color: Colors.gold)),
+                  subtitle: Text('يتطلب ${b.points} نقطة (تحتاج ${b.points - points})', style: const TextStyle(fontSize: 12)),
+                ),
+              )),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ================= 🆕 صفحة أصوات التطبيق =================
+class SoundsPage extends StatefulWidget {
+  const SoundsPage({super.key});
+  @override
+  State<SoundsPage> createState() => _SoundsPageState();
+}
+
+class _SoundsPageState extends State<SoundsPage> {
+  bool _soundEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _soundEnabled = prefs.getBool('mr_otaku_sound_enabled') ?? true);
+  }
+
+  Future<void> _toggle(bool v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('mr_otaku_sound_enabled', v);
+    setState(() => _soundEnabled = v);
+    if (v) await playClickSound();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('أصوات التطبيق')),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Card(
+          child: SwitchListTile(
+            title: const Text('أصوات النقر', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)),
+            subtitle: const Text('تشغيل صوت عند الضغط على الأزرار'),
+            value: _soundEnabled,
+            onChanged: _toggle,
+            activeColor: AppColors.gold,
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// ================= صفحة الأخبار =================
 class NewsPage extends StatelessWidget {
   final AppData data;
   const NewsPage({super.key, required this.data});
@@ -506,6 +702,7 @@ class NewsDetailsPage extends StatelessWidget {
   }
 }
 
+// ================= 🆕 صفحة تعليقات الأخبار (مع صور + ردود) =================
 class CommentsPage extends StatefulWidget {
   final AppData data; final dynamic newsId;
   const CommentsPage({super.key, required this.data, required this.newsId});
@@ -515,22 +712,92 @@ class CommentsPage extends StatefulWidget {
 
 class _CommentsPageState extends State<CommentsPage> {
   final controller = TextEditingController();
+  final focusNode = FocusNode();
   List<Map<String, dynamic>> comments = [];
   bool loading = true;
+  String? _replyTo;
+  File? _image;
+
   @override
   void initState() { super.initState(); load(); }
   Future<void> load() async { await widget.data.loadPlayers(); final result = await widget.data.getComments(widget.newsId); if (!mounted) return; setState(() { comments = result; loading = false; }); }
-  Future<void> send() async { if (controller.text.trim().isEmpty) return; await playClickSound(); final ok = await widget.data.addComment(widget.newsId, widget.data.currentUserName, controller.text); if (!mounted) return; if (ok) { controller.clear(); await load(); } else { showSnack(context, 'تعذر إرسال التعليق.'); } }
+  
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (picked != null) setState(() => _image = File(picked.path));
+  }
+
+  Future<void> send() async { 
+    if (controller.text.trim().isEmpty && _image == null) return; 
+    await playClickSound(); 
+    final ok = await widget.data.addComment(widget.newsId, widget.data.currentUserName, controller.text, replyTo: _replyTo, imageFile: _image); 
+    if (!mounted) return; 
+    if (ok) { 
+      controller.clear(); 
+      setState(() { _replyTo = null; _image = null; }); 
+      await load(); 
+    } else { 
+      showSnack(context, 'تعذر إرسال التعليق.'); 
+    } 
+  }
+
+  void _startReply(String userName) {
+    setState(() => _replyTo = userName);
+    focusNode.requestFocus();
+  }
+
   @override
-  void dispose() { controller.dispose(); super.dispose(); }
+  void dispose() { controller.dispose(); focusNode.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('التعليقات')),
       body: Column(children: [
-        Expanded(child: loading ? const Center(child: CircularProgressIndicator(color: AppColors.gold)) : comments.isEmpty ? const Center(child: Text('لا توجد تعليقات بعد.')) : AnimatedBuilder(animation: widget.data, builder: (context, _) => ListView.builder(padding: const EdgeInsets.all(12), itemCount: comments.length, itemBuilder: (_, index) { final item = comments[index]; final name = clean(item['user_name']); final url = widget.data.avatarForAccount(item['account_id']); return Card(child: ListTile(leading: GestureDetector(onTap: () => showAvatarDialog(context, url, name), child: CircleAvatar(backgroundColor: AppColors.gold, backgroundImage: url.isNotEmpty ? CachedNetworkImageProvider(url) : null, child: url.isEmpty ? const Icon(Icons.person, color: Colors.black) : null)), title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(name))), subtitle: Text(clean(item['comment_text'])))); }))),
-        Padding(padding: const EdgeInsets.all(10), child: Row(children: [Expanded(child: TextField(controller: controller, decoration: const InputDecoration(labelText: 'اكتب تعليقك'))), IconButton(onPressed: send, icon: const Icon(Icons.send))])),
+        Expanded(child: loading ? const Center(child: CircularProgressIndicator(color: AppColors.gold)) : comments.isEmpty ? const Center(child: Text('لا توجد تعليقات بعد.')) : AnimatedBuilder(
+          animation: widget.data,
+          builder: (context, _) => ListView.builder(
+            padding: const EdgeInsets.all(12), itemCount: comments.length,
+            itemBuilder: (_, index) {
+              final item = comments[index];
+              final name = clean(item['user_name']);
+              final replyTo = clean(item['reply_to']);
+              final img = clean(item['image_url']);
+              final url = widget.data.avatarForAccount(item['account_id']);
+              return Card(child: ListTile(
+                leading: GestureDetector(onTap: () => showAvatarDialog(context, url, name), child: CircleAvatar(backgroundColor: AppColors.gold, backgroundImage: url.isNotEmpty ? CachedNetworkImageProvider(url) : null, child: url.isEmpty ? const Icon(Icons.person, color: Colors.black) : null)),
+                title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(name))),
+                subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (replyTo.isNotEmpty) Text('↩️ رداً على $replyTo', style: TextStyle(fontSize: 11, color: AppColors.gold, fontStyle: FontStyle.italic)),
+                  if (clean(item['comment_text']).isNotEmpty) Text(clean(item['comment_text'])),
+                  if (img.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: img, height: 120, fit: BoxFit.cover))),
+                ]),
+                trailing: IconButton(icon: const Icon(Icons.reply, color: AppColors.gold, size: 20), onPressed: () => _startReply(name)),
+              ));
+            },
+          ),
+        )),
+        if (_replyTo != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), color: AppColors.gold.withOpacity(0.15),
+            child: Row(children: [
+              Icon(Icons.reply, color: AppColors.gold, size: 18), const SizedBox(width: 6),
+              Expanded(child: Text('الرد على $_replyTo', style: TextStyle(color: AppColors.gold, fontSize: 13))),
+              IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _replyTo = null)),
+            ]),
+          ),
+        if (_image != null)
+          Container(padding: const EdgeInsets.all(8), color: AppColors.cardBlack, child: Row(children: [
+            const Icon(Icons.image, color: AppColors.gold, size: 20), const SizedBox(width: 8),
+            const Expanded(child: Text('صورة جاهزة')),
+            IconButton(icon: const Icon(Icons.close, size: 18, color: Colors.red), onPressed: () => setState(() => _image = null)),
+          ])),
+        Padding(padding: const EdgeInsets.all(10), child: Row(children: [
+          IconButton(icon: const Icon(Icons.image, color: AppColors.gold), onPressed: _pickImage),
+          Expanded(child: TextField(controller: controller, focusNode: focusNode, decoration: InputDecoration(hintText: _replyTo == null ? 'اكتب تعليقك' : 'الرد على $_replyTo...'))),
+          IconButton(onPressed: send, icon: const Icon(Icons.send)),
+        ])),
       ]),
     );
   }
