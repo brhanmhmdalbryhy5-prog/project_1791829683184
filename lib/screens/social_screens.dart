@@ -31,7 +31,7 @@ class PostsPage extends StatelessWidget {
 }
 
 // =======================================================
-// بطاقة المنشور (تنزيل + فيديو + حفظ + مشاركة + إبلاغ)
+// بطاقة المنشور (مع زر تنزيل محسّن)
 // =======================================================
 class PostCard extends StatefulWidget {
   final AppData data; final Map<String, dynamic> post;
@@ -56,12 +56,15 @@ class _PostCardState extends State<PostCard> {
     showSnack(context, 'تم نسخ المنشور!');
   }
 
+  /// ✅ تنزيل الصورة مباشرة للمعرض (باستخدام gal)
   Future<void> _downloadImage() async {
     final img = clean(widget.post['image_url']);
     if (img.isEmpty) return;
     showSnack(context, 'جاري التنزيل...');
     final ok = await downloadImageToGallery(img, fileName: 'mr_otaku_post');
-    if (mounted) showSnack(context, ok ? '✅ تم حفظ الصورة في معرض هاتفك.' : 'تعذر الحفظ. تأكد من صلاحيات التطبيق.');
+    if (mounted) {
+      showSnack(context, ok ? '✅ تم حفظ الصورة في معرض هاتفك.' : 'تعذر الحفظ. تحقق من صلاحيات التطبيق.');
+    }
   }
 
   Future<void> _report() async {
@@ -425,7 +428,7 @@ class _ChatScreenState extends State<ChatScreen> {
 }
 
 // =======================================================
-// المعرض
+// المعرض (مع زر تنزيل محسّن)
 // =======================================================
 class GalleryPage extends StatefulWidget {
   final AppData data;
@@ -467,7 +470,11 @@ class _GalleryPageState extends State<GalleryPage> {
             const SizedBox(height: 8),
             Row(children: [
               Expanded(child: Text(owner, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold))),
-              IconButton(icon: const Icon(Icons.download, color: AppColors.gold), onPressed: () async { final ok = await downloadImageToGallery(imgUrl, fileName: 'mr_otaku_gallery'); if (context.mounted) showSnack(context, ok ? '✅ تم الحفظ' : 'تعذر الحفظ'); }),
+              IconButton(icon: const Icon(Icons.download, color: AppColors.gold), onPressed: () async {
+                showSnack(context, 'جاري التنزيل...');
+                final ok = await downloadImageToGallery(imgUrl, fileName: 'mr_otaku_gallery');
+                if (context.mounted) showSnack(context, ok ? '✅ تم الحفظ' : 'تعذر الحفظ');
+              }),
             ]),
             if (clean(item['caption']).isNotEmpty) Text(clean(item['caption']), textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
           ]),
