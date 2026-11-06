@@ -36,21 +36,30 @@ String safeExtension(String path) {
   return 'jpg';
 }
 
+// ✅ دالة "منذ ساعة / منذ يوم" مثل تيك توك ويوتيوب
+String timeAgo(String dateStr) {
+  if (dateStr.isEmpty) return '';
+  try {
+    final dt = DateTime.parse(dateStr).toLocal();
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'الآن';
+    if (diff.inMinutes < 60) return 'منذ ${diff.inMinutes} دقيقة';
+    if (diff.inHours < 24) return 'منذ ${diff.inHours} ساعة';
+    if (diff.inDays < 7) return 'منذ ${diff.inDays} يوم';
+    if (diff.inDays < 30) return 'منذ ${(diff.inDays / 7).floor()} أسبوع';
+    if (diff.inDays < 365) return 'منذ ${(diff.inDays / 30).floor()} شهر';
+    return 'منذ ${(diff.inDays / 365).floor()} سنة';
+  } catch (e) { return ''; }
+}
+
 Future<bool> checkAdminSession(dynamic data) async {
   final accId = data.currentAccountId;
   if (accId == null) return false;
   try {
-    final player = await Supabase.instance.client
-        .from('players')
-        .select()
-        .eq('account_id', accId)
-        .maybeSingle();
+    final player = await Supabase.instance.client.from('players').select().eq('account_id', accId).maybeSingle();
     if (player == null) return false;
     return player['is_admin'] == true;
-  } catch (e) {
-    debugPrint('Admin session error: $e');
-    return false;
-  }
+  } catch (e) { return false; }
 }
 
 void showAvatarDialog(BuildContext context, String url, String name) {
@@ -59,44 +68,33 @@ void showAvatarDialog(BuildContext context, String url, String name) {
     builder: (_) => Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.gold, width: 4),
-              boxShadow: [
-                BoxShadow(color: AppColors.gold.withOpacity(0.5), blurRadius: 20, spreadRadius: 5),
-              ],
-            ),
-            child: CircleAvatar(
-              radius: 100,
-              backgroundColor: AppColors.inputBlack,
-              backgroundImage: url.isNotEmpty ? NetworkImage(url) : null,
-              child: url.isEmpty ? const Icon(Icons.person, size: 100, color: AppColors.gold) : null,
-            ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.gold, width: 4),
+            boxShadow: [BoxShadow(color: AppColors.gold.withOpacity(0.5), blurRadius: 20, spreadRadius: 5)],
           ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.black.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.gold),
-            ),
-            child: Text(name, style: const TextStyle(color: AppColors.gold, fontSize: 22, fontWeight: FontWeight.bold)),
+          child: CircleAvatar(
+            radius: 100,
+            backgroundColor: AppColors.inputBlack,
+            backgroundImage: url.isNotEmpty ? NetworkImage(url) : null,
+            child: url.isEmpty ? const Icon(Icons.person, size: 100, color: AppColors.gold) : null,
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          decoration: BoxDecoration(color: AppColors.black.withOpacity(0.8), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.gold)),
+          child: Text(name, style: const TextStyle(color: AppColors.gold, fontSize: 22, fontWeight: FontWeight.bold)),
+        ),
+      ]),
     ),
   );
 }
 
 class BadgeInfo {
-  final int points;
-  final String icon;
-  final String name;
+  final int points; final String icon; final String name;
   const BadgeInfo({required this.points, required this.icon, required this.name});
 }
 
@@ -113,16 +111,12 @@ const List<BadgeInfo> otakuBadges = [
 
 BadgeInfo? getCurrentBadge(int points) {
   BadgeInfo? current;
-  for (final badge in otakuBadges) {
-    if (points >= badge.points) current = badge;
-  }
+  for (final badge in otakuBadges) { if (points >= badge.points) current = badge; }
   return current;
 }
 
 class RewardInfo {
-  final String name;
-  final String icon;
-  final int requiredPoints;
+  final String name; final String icon; final int requiredPoints;
   const RewardInfo({required this.name, required this.icon, required this.requiredPoints});
 }
 
