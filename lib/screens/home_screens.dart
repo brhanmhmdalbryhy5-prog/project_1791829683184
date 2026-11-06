@@ -401,20 +401,11 @@ class _ProfilePageState extends State<ProfilePage> {
                   Text('ID: ${widget.data.currentAccountId} | ${widget.data.currentLevel}'),
                   const SizedBox(height: 8),
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    GestureDetector(
-                      onTap: () => setState(() => _tab = 0),
-                      child: _statTikTok('${myPosts.length}', 'منشورات'),
-                    ),
+                    GestureDetector(onTap: () => setState(() => _tab = 0), child: _statTikTok('${myPosts.length}', 'منشورات')),
                     Container(width: 1, height: 30, color: Colors.grey, margin: const EdgeInsets.symmetric(horizontal: 20)),
-                    GestureDetector(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FollowersPage(data: widget.data, showFollowers: true, accountId: widget.data.currentAccountId!))),
-                      child: _statTikTok('${widget.data.myFollowersCount}', 'متابع'),
-                    ),
+                    GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FollowersPage(data: widget.data, showFollowers: true, accountId: widget.data.currentAccountId!))), child: _statTikTok('${widget.data.myFollowersCount}', 'متابع')),
                     Container(width: 1, height: 30, color: Colors.grey, margin: const EdgeInsets.symmetric(horizontal: 20)),
-                    GestureDetector(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FollowersPage(data: widget.data, showFollowers: false, accountId: widget.data.currentAccountId!))),
-                      child: _statTikTok('${widget.data.myFollowingCount}', 'يتابع'),
-                    ),
+                    GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FollowersPage(data: widget.data, showFollowers: false, accountId: widget.data.currentAccountId!))), child: _statTikTok('${widget.data.myFollowingCount}', 'يتابع')),
                   ]),
                   if (badge != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${badge.icon} ${badge.name}')),
                 ]),
@@ -422,26 +413,16 @@ class _ProfilePageState extends State<ProfilePage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
-                  decoration: BoxDecoration(
-                    gradient: ThemeManager.instance.getButtonGradient(),
+                  decoration: BoxDecoration(gradient: ThemeManager.instance.getButtonGradient(), borderRadius: BorderRadius.circular(30), boxShadow: ThemeManager.instance.getGlowShadow()),
+                  child: Material(color: Colors.transparent, child: InkWell(
                     borderRadius: BorderRadius.circular(30),
-                    boxShadow: ThemeManager.instance.getGlowShadow(),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(30),
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CreatePostPage(data: widget.data))),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          const Icon(Icons.add, size: 28, color: Colors.white),
-                          const SizedBox(width: 8),
-                          const Text('نشر منشور في قناتك', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                        ]),
-                      ),
-                    ),
-                  ),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CreatePostPage(data: widget.data))),
+                    child: Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      const Icon(Icons.add, size: 28, color: Colors.white),
+                      const SizedBox(width: 8),
+                      const Text('نشر منشور في قناتك', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    ])),
+                  )),
                 ),
               ),
               const SizedBox(height: 16),
@@ -487,24 +468,22 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _tabBtn(IconData icon, String label, int tab) {
     final isSelected = _tab == tab;
     final primary = ThemeManager.instance.primaryColor;
-    return Expanded(
-      child: InkWell(
-        onTap: () => setState(() => _tab = tab),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: isSelected ? primary : Colors.transparent, width: 2))),
-          child: Column(children: [
-            Icon(icon, color: isSelected ? primary : Colors.grey),
-            Text(label, style: TextStyle(fontSize: 11, color: isSelected ? primary : Colors.grey)),
-          ]),
-        ),
+    return Expanded(child: InkWell(
+      onTap: () => setState(() => _tab = tab),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: isSelected ? primary : Colors.transparent, width: 2))),
+        child: Column(children: [
+          Icon(icon, color: isSelected ? primary : Colors.grey),
+          Text(label, style: TextStyle(fontSize: 11, color: isSelected ? primary : Colors.grey)),
+        ]),
       ),
-    );
+    ));
   }
 }
 
 // =======================================================
-// 4. صفحة إنشاء منشور (TikTok-style: تخرج فوراً + تنشر في الخلفية)
+// 4. صفحة إنشاء منشور (TikTok-style)
 // =======================================================
 class CreatePostPage extends StatefulWidget {
   final AppData data;
@@ -521,10 +500,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
   bool _loadingInfo = true;
 
   @override
-  void initState() {
-    super.initState();
-    _loadRemaining();
-  }
+  void initState() { super.initState(); _loadRemaining(); }
 
   Future<void> _loadRemaining() async {
     final remaining = await widget.data.getRemainingVideos();
@@ -538,184 +514,99 @@ class _CreatePostPageState extends State<CreatePostPage> {
   }
 
   Future<void> _pickVideo() async {
-    if (_remainingVideos <= 0) {
-      showSnack(context, 'وصلت للحد الأقصى: 5 فيديوهات شهرياً.');
-      return;
-    }
+    if (_remainingVideos <= 0) { showSnack(context, 'وصلت للحد الأقصى: 5 فيديوهات شهرياً.'); return; }
     final picker = ImagePicker();
     final picked = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 5));
     if (picked != null) {
       final size = await File(picked.path).length();
-      if (size > 5 * 1024 * 1024) {
-        if (mounted) showSnack(context, 'الفيديو كبير (${(size / 1024 / 1024).toStringAsFixed(1)}MB). الحد 5MB.');
-        return;
-      }
+      if (size > 5 * 1024 * 1024) { if (mounted) showSnack(context, 'الفيديو كبير (${(size / 1024 / 1024).toStringAsFixed(1)}MB). الحد 5MB.'); return; }
       setState(() { _video = File(picked.path); _image = null; });
     }
   }
 
   Future<void> _post() async {
     if (textCtrl.text.trim().isEmpty && _image == null && _video == null) return;
-
     final content = textCtrl.text;
     final image = _image;
     final video = _video;
-
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-
     navigator.pop();
-
-    messenger.showSnackBar(
-      SnackBar(
-        content: Row(
-          children: const [
-            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-            SizedBox(width: 12),
-            Expanded(child: Text('جاري النشر...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-          ],
-        ),
-        duration: const Duration(minutes: 5),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.cardBlack,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: ThemeManager.instance.primaryColor.withOpacity(0.5))),
-      ),
-    );
-
+    messenger.showSnackBar(SnackBar(
+      content: Row(children: const [
+        SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+        SizedBox(width: 12),
+        Expanded(child: Text('جاري النشر...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+      ]),
+      duration: const Duration(minutes: 5), behavior: SnackBarBehavior.floating, backgroundColor: AppColors.cardBlack,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: ThemeManager.instance.primaryColor.withOpacity(0.5))),
+    ));
     try {
       final error = await widget.data.addPost(content, image, videoFile: video);
       messenger.hideCurrentSnackBar();
-
       if (error == null) {
         messenger.showSnackBar(SnackBar(
-          content: const Row(children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 8),
-            Text('تم النشر بنجاح!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ]),
-          backgroundColor: Colors.green.shade700,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
+          content: const Row(children: [Icon(Icons.check_circle, color: Colors.white), SizedBox(width: 8), Text('تم النشر بنجاح!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
+          backgroundColor: Colors.green.shade700, behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ));
       } else {
         messenger.showSnackBar(SnackBar(
-          content: Row(children: [
-            const Icon(Icons.error, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(child: Text(error, style: const TextStyle(color: Colors.white))),
-          ]),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
+          content: Row(children: [const Icon(Icons.error, color: Colors.white), const SizedBox(width: 8), Expanded(child: Text(error, style: const TextStyle(color: Colors.white)))]),
+          backgroundColor: Colors.red.shade700, behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 4),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ));
       }
     } catch (e) {
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(SnackBar(
-        content: Text('❌ خطأ غير متوقع: $e'),
-        backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-      ));
+      messenger.showSnackBar(SnackBar(content: Text('❌ خطأ غير متوقع: $e'), backgroundColor: Colors.red.shade700, behavior: SnackBarBehavior.floating));
     }
   }
 
   @override
-  void dispose() {
-    textCtrl.dispose();
-    super.dispose();
-  }
+  void dispose() { textCtrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
     final canPostVideo = _remainingVideos > 0;
-
     return Scaffold(
       appBar: AppBar(title: const Text('نشر منشور')),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            if (!_loadingInfo)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: canPostVideo
-                      ? LinearGradient(colors: [Colors.green.withOpacity(0.3), Colors.green.withOpacity(0.1)])
-                      : LinearGradient(colors: [Colors.red.withOpacity(0.3), Colors.red.withOpacity(0.1)]),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: canPostVideo ? Colors.green : Colors.red),
-                ),
-                child: Row(
-                  children: [
-                    Icon(canPostVideo ? Icons.videocam : Icons.block, color: canPostVideo ? Colors.green : Colors.red),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        canPostVideo
-                            ? 'متبقي لك $_remainingVideos فيديو من 5 هذا الشهر'
-                            : 'وصلت للحد الأقصى (5 فيديوهات). يتجدد الشهر القادم.',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: canPostVideo ? Colors.green : Colors.red),
-                      ),
-                    ),
-                  ],
-                ),
+        child: Column(children: [
+          if (!_loadingInfo)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: canPostVideo ? LinearGradient(colors: [Colors.green.withOpacity(0.3), Colors.green.withOpacity(0.1)]) : LinearGradient(colors: [Colors.red.withOpacity(0.3), Colors.red.withOpacity(0.1)]),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: canPostVideo ? Colors.green : Colors.red),
               ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: textCtrl,
-              maxLines: 5,
-              decoration: const InputDecoration(hintText: 'بماذا تفكر يا أوتاكو؟'),
+              child: Row(children: [
+                Icon(canPostVideo ? Icons.videocam : Icons.block, color: canPostVideo ? Colors.green : Colors.red),
+                const SizedBox(width: 8),
+                Expanded(child: Text(canPostVideo ? 'متبقي لك $_remainingVideos فيديو من 5 هذا الشهر' : 'وصلت للحد الأقصى (5 فيديوهات). يتجدد الشهر القادم.', style: TextStyle(fontWeight: FontWeight.bold, color: canPostVideo ? Colors.green : Colors.red))),
+              ]),
             ),
-            const SizedBox(height: 12),
-            if (_image != null)
-              Stack(
-                alignment: Alignment.topRight,
-                children: [
-                  Image.file(_image!, height: 200, width: double.infinity, fit: BoxFit.cover),
-                  IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _image = null)),
-                ],
-              ),
-            if (_video != null)
-              Stack(
-                alignment: Alignment.topRight,
-                children: [
-                  Container(
-                    height: 200,
-                    width: double.infinity,
-                    color: Colors.black,
-                    child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.videocam, color: AppColors.gold, size: 60),
-                      Text('فيديو 5 ثوان جاهز', style: TextStyle(color: AppColors.gold)),
-                    ])),
-                  ),
-                  IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _video = null)),
-                ],
-              ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                OutlinedButton.icon(onPressed: _pickImage, icon: const Icon(Icons.image, size: 18), label: const Text('صورة')),
-                OutlinedButton.icon(
-                  onPressed: canPostVideo ? _pickVideo : null,
-                  icon: Icon(Icons.videocam, size: 18, color: canPostVideo ? null : Colors.grey),
-                  label: Text('فيديو ($_remainingVideos/5)', style: TextStyle(color: canPostVideo ? null : Colors.grey)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _post,
-                icon: const Icon(Icons.send),
-                label: const Text('نشر'),
-              ),
-            ),
-          ],
-        ),
+          const SizedBox(height: 12),
+          TextField(controller: textCtrl, maxLines: 5, decoration: const InputDecoration(hintText: 'بماذا تفكر يا أوتاكو؟')),
+          const SizedBox(height: 12),
+          if (_image != null) Stack(alignment: Alignment.topRight, children: [
+            Image.file(_image!, height: 200, width: double.infinity, fit: BoxFit.cover),
+            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _image = null)),
+          ]),
+          if (_video != null) Stack(alignment: Alignment.topRight, children: [
+            Container(height: 200, width: double.infinity, color: Colors.black, child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.videocam, color: AppColors.gold, size: 60), Text('فيديو 5 ثوان جاهز', style: TextStyle(color: AppColors.gold))]))),
+            IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _video = null)),
+          ]),
+          const SizedBox(height: 12),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            OutlinedButton.icon(onPressed: _pickImage, icon: const Icon(Icons.image, size: 18), label: const Text('صورة')),
+            OutlinedButton.icon(onPressed: canPostVideo ? _pickVideo : null, icon: Icon(Icons.videocam, size: 18, color: canPostVideo ? null : Colors.grey), label: Text('فيديو ($_remainingVideos/5)', style: TextStyle(color: canPostVideo ? null : Colors.grey))),
+          ]),
+          const SizedBox(height: 12),
+          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _post, icon: const Icon(Icons.send), label: const Text('نشر'))),
+        ]),
       ),
     );
   }
@@ -752,9 +643,7 @@ class ServiceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = AppColors.getColor(colorIndex);
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 4,
-      shadowColor: color.withOpacity(0.4),
+      margin: const EdgeInsets.only(bottom: 12), elevation: 4, shadowColor: color.withOpacity(0.4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: color.withOpacity(0.3))),
       child: Container(
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), gradient: LinearGradient(colors: [color.withOpacity(0.15), color.withOpacity(0.05)])),
@@ -854,23 +743,9 @@ class _SoundsPageState extends State<SoundsPage> {
   Future<void> _toggle(bool v) async { final prefs = await SharedPreferences.getInstance(); await prefs.setBool('mr_otaku_sound_enabled', v); setState(() => _soundEnabled = v); if (v) await playClickSound(); }
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('أصوات التطبيق')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: SwitchListTile(
-              title: const Text('الصوت/الاهتزاز', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)),
-              subtitle: const Text('اهتزاز عند الضغط على الأزرار'),
-              value: _soundEnabled,
-              onChanged: _toggle,
-              activeColor: AppColors.gold,
-            ),
-          ),
-        ],
-      ),
-    );
+    return Scaffold(appBar: AppBar(title: const Text('أصوات التطبيق')), body: ListView(padding: const EdgeInsets.all(16), children: [
+      Card(child: SwitchListTile(title: const Text('الصوت/الاهتزاز', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)), subtitle: const Text('اهتزاز عند الضغط على الأزرار'), value: _soundEnabled, onChanged: _toggle, activeColor: AppColors.gold)),
+    ]));
   }
 }
 
@@ -927,6 +802,9 @@ class NewsDetailsPage extends StatelessWidget {
   }
 }
 
+// =======================================================
+// ✅ تعليقات الأخبار (مُصلحة: الأسماء والأيقونات تظهر للجميع)
+// =======================================================
 class CommentsPage extends StatefulWidget {
   final AppData data; final dynamic newsId;
   const CommentsPage({super.key, required this.data, required this.newsId});
@@ -957,6 +835,36 @@ class _CommentsPageState extends State<CommentsPage> {
   @override
   void dispose() { controller.dispose(); focusNode.dispose(); super.dispose(); }
 
+  /// ✅ اسم المستخدم: يجرب account_id ثم user_name المخزّن
+  String _displayNameFor(Map<String, dynamic> item) {
+    final accId = item['account_id'];
+    if (accId != null) {
+      final viaAcc = widget.data.displayNameForAccount(accId);
+      if (viaAcc.isNotEmpty) return viaAcc;
+    }
+    final stored = clean(item['user_name']).trim();
+    return stored.isEmpty ? 'مستخدم' : stored;
+  }
+
+  /// ✅ أيقونة المستخدم: تجرب account_id ثم تبحث عن user_name
+  String _avatarFor(Map<String, dynamic> item) {
+    final accId = item['account_id'];
+    if (accId != null) {
+      final viaAcc = widget.data.avatarForAccount(accId);
+      if (viaAcc.isNotEmpty) return viaAcc;
+    }
+    final stored = clean(item['user_name']).trim().toLowerCase();
+    if (stored.isEmpty) return '';
+    for (final p in widget.data.players) {
+      final pName = clean(p['name']).trim().toLowerCase();
+      final pChannel = clean(p['channel_name']).trim().toLowerCase();
+      if (pName == stored || pChannel == stored) {
+        return clean(p['avatar_url']);
+      }
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(appBar: AppBar(title: const Text('التعليقات')), body: Column(children: [
@@ -964,16 +872,16 @@ class _CommentsPageState extends State<CommentsPage> {
         padding: const EdgeInsets.all(12), itemCount: comments.length,
         itemBuilder: (_, index) {
           final item = comments[index];
-          final name = widget.data.displayNameForAccount(item['account_id']);
+          final name = _displayNameFor(item);
           final replyTo = clean(item['reply_to']);
           final img = clean(item['image_url']);
-          final url = widget.data.avatarForAccount(item['account_id']);
+          final url = _avatarFor(item);
           final cid = item['id'];
           final isLiked = widget.data.isCommentLiked(cid, 'news');
           return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserProfilePage(data: widget.data, accountId: parseInt(item['account_id']), userName: name))),
+                onTap: () => showAvatarDialog(context, url, name),
                 child: CircleAvatar(radius: 18, backgroundColor: AppColors.gold, backgroundImage: url.isNotEmpty ? CachedNetworkImageProvider(url) : null, child: url.isEmpty ? const Icon(Icons.person, color: Colors.black, size: 18) : null),
               ),
               const SizedBox(width: 8),
