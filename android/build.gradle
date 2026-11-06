@@ -5,13 +5,24 @@ allprojects {
     }
 }
 
-// ✅ الحل: تعيين namespace تلقائياً للمكتبات القديمة (مثل image_gallery_saver)
+// ✅ حل شامل: namespace + JVM 17 لكل المكتبات
 subprojects {
     afterEvaluate { project ->
         if (project.hasProperty('android')) {
             project.android {
                 if (namespace == null) {
                     namespace project.group
+                }
+                compileOptions {
+                    sourceCompatibility JavaVersion.VERSION_17
+                    targetCompatibility JavaVersion.VERSION_17
+                }
+            }
+            if (project.plugins.hasPlugin('kotlin-android')) {
+                project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                    kotlinOptions {
+                        jvmTarget = "17"
+                    }
                 }
             }
         }
