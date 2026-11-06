@@ -6,7 +6,7 @@ import 'package:workmanager/workmanager.dart';
 
 import 'core/colors.dart';
 import 'core/helpers.dart';
-import 'core/theme_manager.dart'; // ✅ ملف الثيمات
+import 'core/theme_manager.dart';
 import 'data/app_data.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screens.dart';
@@ -18,7 +18,7 @@ Future<void> main() async {
     anonKey: 'sb_publishable_EZLVSUviR39RXi6OP3OqfQ_3j7vMZcU',
   );
   await LocalCache.init();
-  await ThemeManager.instance.load(); // ✅ تحميل الثيم المحفوظ
+  await ThemeManager.instance.load();
   runApp(const MrOtakuApp());
 
   Future.delayed(const Duration(seconds: 2), () async {
@@ -42,19 +42,11 @@ class _MrOtakuAppState extends State<MrOtakuApp> {
   bool checking = true;
 
   @override
-  void initState() {
-    super.initState();
-    start();
-  }
+  void initState() { super.initState(); start(); }
 
   Future<void> start() async {
-    try {
-      await data.loadLocalAccount();
-    } catch (e) {
-      debugPrint('loadLocalAccount error: $e');
-    }
+    try { await data.loadLocalAccount(); } catch (e) { debugPrint('loadLocalAccount error: $e'); }
     if (mounted) setState(() => checking = false);
-
     Future.microtask(() async {
       try {
         if (data.hasAccount) {
@@ -62,79 +54,51 @@ class _MrOtakuAppState extends State<MrOtakuApp> {
           await data.setAdminSession(admin);
           await data.loadData();
         }
-      } catch (e) {
-        debugPrint('Background load error: $e');
-      }
+      } catch (e) { debugPrint('Background load error: $e'); }
     });
   }
 
   ThemeData get theme {
-    final primary = ThemeManager.instance.primaryColor; // ✅ اللون الديناميكي
+    final primary = ThemeManager.instance.primaryColor;
+    final isDark = ThemeManager.instance.isDarkMode;
+    final bgColor = isDark ? AppColors.black : Colors.white;
+    final cardColor = isDark ? AppColors.cardBlack : Colors.grey.shade100;
+    final textColor = isDark ? Colors.white : Colors.black;
+
     return ThemeData(
-      brightness: Brightness.dark,
+      brightness: isDark ? Brightness.dark : Brightness.light,
       useMaterial3: true,
-      scaffoldBackgroundColor: AppColors.black,
-      cardColor: AppColors.cardBlack,
-      colorScheme: ColorScheme.dark(
-        primary: primary,
-        onPrimary: Colors.black,
-        secondary: primary,
-        onSecondary: Colors.black,
-        surface: AppColors.cardBlack,
-        onSurface: Colors.white,
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.black,
-        foregroundColor: primary,
-        centerTitle: true,
-        elevation: 0,
-      ),
+      scaffoldBackgroundColor: bgColor,
+      cardColor: cardColor,
+      colorScheme: isDark
+          ? ColorScheme.dark(primary: primary, onPrimary: Colors.black, secondary: primary, onSecondary: Colors.black, surface: cardColor, onSurface: textColor)
+          : ColorScheme.light(primary: primary, onPrimary: Colors.white, secondary: primary, onSecondary: Colors.white, surface: cardColor, onSurface: textColor),
+      appBarTheme: AppBarTheme(backgroundColor: bgColor, foregroundColor: primary, centerTitle: true, elevation: 0),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: AppColors.black,
+        backgroundColor: bgColor,
         indicatorColor: primary.withOpacity(0.25),
-        labelTextStyle: MaterialStateProperty.all(
-          TextStyle(color: primary, fontWeight: FontWeight.bold),
-        ),
+        labelTextStyle: MaterialStateProperty.all(TextStyle(color: primary, fontWeight: FontWeight.bold)),
         iconTheme: MaterialStateProperty.all(IconThemeData(color: primary)),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.inputBlack,
+        fillColor: isDark ? AppColors.inputBlack : Colors.grey.shade200,
         labelStyle: TextStyle(color: primary),
         hintStyle: TextStyle(color: primary.withOpacity(0.5)),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: primary),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: primary.withOpacity(0.4)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: primary, width: 1.5),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: primary)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: primary.withOpacity(0.4))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: primary, width: 1.5)),
       ),
       cardTheme: CardTheme(
-        color: AppColors.cardBlack,
+        color: cardColor,
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.all(Radius.circular(18)),
-          side: BorderSide(color: primary.withOpacity(0.4)),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: const BorderRadius.all(Radius.circular(18)), side: BorderSide(color: primary.withOpacity(0.4))),
       ),
       iconTheme: IconThemeData(color: primary),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(backgroundColor: primary, foregroundColor: Colors.black),
-      ),
+      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(backgroundColor: primary, foregroundColor: Colors.white)),
       textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: primary)),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(foregroundColor: primary, side: BorderSide(color: primary)),
-      ),
-      floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: primary,
-        foregroundColor: Colors.black,
-      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(foregroundColor: primary, side: BorderSide(color: primary))),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: primary, foregroundColor: Colors.white),
       progressIndicatorTheme: ProgressIndicatorThemeData(color: primary),
     );
   }
@@ -142,24 +106,13 @@ class _MrOtakuAppState extends State<MrOtakuApp> {
   @override
   Widget build(BuildContext context) {
     if (checking) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: theme,
-        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
-      );
+      return MaterialApp(debugShowCheckedModeBanner: false, theme: theme, home: const Scaffold(body: Center(child: CircularProgressIndicator())));
     }
-
-    // ✅ الاستماع لكل من AppData و ThemeManager
     return AnimatedBuilder(
       animation: Listenable.merge([data, ThemeManager.instance]),
       builder: (_, __) {
         Widget home = !data.hasAccount ? AccountSetupPage(data: data) : HomePage(data: data);
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'مستر أوتاكو',
-          theme: theme,
-          home: home,
-        );
+        return MaterialApp(debugShowCheckedModeBanner: false, title: 'مستر أوتاكو', theme: theme, home: home);
       },
     );
   }
@@ -181,9 +134,7 @@ class NotificationService {
   }
 
   static Future<void> show(String title, String body, {int id = 0}) async {
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(_channelId, _channelName, channelDescription: _channelDesc, importance: Importance.high, priority: Priority.high, icon: '@mipmap/ic_launcher'),
-    );
+    const details = NotificationDetails(android: AndroidNotificationDetails(_channelId, _channelName, channelDescription: _channelDesc, importance: Importance.high, priority: Priority.high, icon: '@mipmap/ic_launcher'));
     await _plugin.show(id, title, body, details);
   }
 
@@ -209,9 +160,7 @@ class NotificationService {
         await show(clean(first['title']), clean(first['body']), id: currentId.hashCode);
       }
       await prefs.setString('mr_otaku_last_notif_id', currentId);
-    } catch (e) {
-      debugPrint('Check notifications error: $e');
-    }
+    } catch (e) { debugPrint('Check notifications error: $e'); }
   }
 }
 
@@ -220,10 +169,7 @@ void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
       try { Supabase.instance.client; } catch (_) {
-        await Supabase.initialize(
-          url: 'https://sekchgllbimoedsjoumi.supabase.co',
-          anonKey: 'sb_publishable_EZLVSUviR39RXi6OP3OqfQ_3j7vMZcU',
-        );
+        await Supabase.initialize(url: 'https://sekchgllbimoedsjoumi.supabase.co', anonKey: 'sb_publishable_EZLVSUviR39RXi6OP3OqfQ_3j7vMZcU');
       }
     } catch (_) {}
     await NotificationService.init();
