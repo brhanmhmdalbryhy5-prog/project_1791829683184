@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -139,7 +138,7 @@ class _HomeTabState extends State<HomeTab> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // 🔥 Stories (شريط الحالات)
+            // 🔥 Stories
             if (widget.data.players.isNotEmpty)
               SizedBox(
                 height: 95,
@@ -160,8 +159,8 @@ class _HomeTabState extends State<HomeTab> {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 gradient: LinearGradient(colors: [AppColors.getColor(i % 12), AppColors.getColor((i + 3) % 12)]),
-                                padding: const EdgeInsets.all(3),
                               ),
+                              padding: const EdgeInsets.all(3),
                               child: CircleAvatar(
                                 radius: 30,
                                 backgroundColor: AppColors.cardBlack,
@@ -388,13 +387,11 @@ class _ProfilePageState extends State<ProfilePage> {
                     Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: _pickAvatar, child: Container(decoration: BoxDecoration(color: primary, shape: BoxShape.circle, border: Border.all(color: Colors.black, width: 2)), padding: const EdgeInsets.all(8), child: const Icon(Icons.camera_alt, size: 20, color: Colors.black)))),
                   ]),
                   const SizedBox(height: 8),
-                  // ✏️ تغيير الاسم
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Text(widget.data.currentUserName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: primary)),
                     IconButton(onPressed: _changeName, icon: Icon(Icons.edit, size: 18, color: primary)),
                   ]),
                   Text('معرف: ${widget.data.currentAccountId} | ${widget.data.currentLevel}'),
-                  // 📊 إحصائيات TikTok
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     _statTikTok('${myPosts.length}', 'منشورات'),
                     Container(width: 1, height: 30, color: Colors.grey, margin: const EdgeInsets.symmetric(horizontal: 20)),
@@ -405,7 +402,6 @@ class _ProfilePageState extends State<ProfilePage> {
                   if (badge != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${badge.icon} ${badge.name}')),
                 ]),
               ),
-              // 🎯 زر نشر منشور كبير دائري
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: FilledButton.icon(
@@ -416,7 +412,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 16),
-              // أزرار الخدمات
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(children: [
@@ -427,13 +422,11 @@ class _ProfilePageState extends State<ProfilePage> {
                 ]),
               ),
               const Divider(),
-              // تبويبات TikTok
               Row(children: [
                 _tabBtn(Icons.grid_on, 'منشوراتي', 0),
                 _tabBtn(Icons.favorite, 'أعجبني', 1),
                 _tabBtn(Icons.bookmark, 'محفوظاتي', 2),
               ]),
-              // محتوى التبويب
               if (_tab == 0)
                 if (myPosts.isEmpty) const Padding(padding: EdgeInsets.all(30), child: Center(child: Text('لا توجد منشورات')))
                 else ...myPosts.map((p) => PostCard(data: widget.data, post: p)),
@@ -477,7 +470,7 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // =======================================================
-// 4. صفحة إنشاء منشور (منفصلة)
+// 4. صفحة إنشاء منشور
 // =======================================================
 class CreatePostPage extends StatefulWidget {
   const CreatePostPage({super.key});
@@ -763,7 +756,6 @@ class _CommentsPageState extends State<CommentsPage> {
             if (clean(item['comment_text']).isNotEmpty) Text(clean(item['comment_text'])),
             if (img.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: img, height: 120, fit: BoxFit.cover))),
             const SizedBox(height: 6),
-            // ❤️ إعجاب بالتعليق
             Row(children: [
               IconButton(onPressed: () async { await widget.data.toggleCommentLike(cid, 'news'); }, icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? Colors.red : AppColors.gold, size: 18)),
               Text('${widget.data.commentLikesCount(cid, 'news')}', style: const TextStyle(fontSize: 12)),
