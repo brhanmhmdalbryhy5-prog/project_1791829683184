@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/colors.dart';
 import '../core/helpers.dart';
-import '../core/theme_manager.dart'; // ✅ الثيمات
+import '../core/theme_manager.dart';
 import '../data/app_data.dart';
 import 'social_screens.dart';
 import 'admin_screens.dart';
@@ -358,7 +358,7 @@ class _ProfilePageState extends State<ProfilePage> {
               // 2️⃣ زر لوحة الإدارة
               if (widget.data.isAdmin)
                 ServiceTile(icon: Icons.admin_panel_settings, title: 'لوحة الإدارة', subtitle: 'إدارة التطبيق', colorIndex: 11, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPanelPage(data: widget.data)))),
-              // 3️⃣ 🎨 زر الثيمات (جديد)
+              // 3️⃣ 🎨 زر الثيمات
               ServiceTile(
                 icon: Icons.palette,
                 title: 'الثيمات',
@@ -402,7 +402,7 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // =======================================================
-// 4. الخدمات (مع الجديدة)
+// 4. الخدمات
 // =======================================================
 class ServicesPage extends StatelessWidget {
   final AppData data;
@@ -539,7 +539,7 @@ class CertificatesPage extends StatelessWidget {
 }
 
 // =======================================================
-// 7. لوحة التقدم
+// 7. لوحة التقدم (تم إصلاح Colors.gold → AppColors.gold)
 // =======================================================
 class ProgressPage extends StatelessWidget {
   final AppData data;
@@ -611,7 +611,7 @@ class ProgressPage extends StatelessWidget {
               ...otakuBadges.where((b) => b.points > points).take(5).map((b) => Card(
                 child: ListTile(
                   leading: Text(b.icon, style: const TextStyle(fontSize: 30)),
-                  title: Text(b.name, style: const TextStyle(color: Colors.gold)),
+                  title: Text(b.name, style: const TextStyle(color: AppColors.gold)), // ✅ تم الإصلاح
                   subtitle: Text('يتطلب ${b.points} نقطة (تحتاج ${b.points - points})', style: const TextStyle(fontSize: 12)),
                 ),
               )),
