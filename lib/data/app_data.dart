@@ -84,6 +84,7 @@ class AppData extends ChangeNotifier {
   int get currentPoints => parseInt(currentPlayer?['points']);
   String get currentLevel => getUserLevel(currentPoints);
   BadgeInfo? get currentBadge => getCurrentBadge(currentPoints);
+  BadgeInfo? get nextBadge => getNextBadge(currentPoints);
 
   Map<String, dynamic>? get leader {
     if (players.isEmpty) return null;
@@ -91,6 +92,18 @@ class AppData extends ChangeNotifier {
   }
 
   List<Map<String, dynamic>> get myPosts => posts.where((p) => parseInt(p['account_id']) == currentAccountId).toList();
+
+  // ✅ إحصائيات المستخدم
+  int get myPostsCount => posts.where((p) => parseInt(p['account_id']) == currentAccountId).length;
+  int get myReceivedLikes {
+    int total = 0;
+    for (final post in posts) {
+      if (parseInt(post['account_id']) == currentAccountId) {
+        total += postLikeCounts[post['id']] ?? 0;
+      }
+    }
+    return total;
+  }
 
   String avatarForAccount(dynamic accountId) {
     if (accountId == null) return '';
@@ -107,7 +120,6 @@ class AppData extends ChangeNotifier {
     return '';
   }
 
-  // ✅ دالة التحقق من صلاحية المدير للاعب معين
   bool isPlayerAdmin(dynamic accountId) {
     for (final p in players) {
       if (parseInt(p['account_id']) == parseInt(accountId)) return p['is_admin'] == true;
@@ -206,12 +218,14 @@ class AppData extends ChangeNotifier {
     try { final result = await supabase.from('post_comments').select().eq('post_id', postId).order('created_at', ascending: true); return List<Map<String, dynamic>>.from(result); } catch (e) { return []; }
   }
 
-  // ✅ إضافة replyTo لتعليقات المنشورات
-  Future<bool> addPostComment(dynamic postId, String text, {String? replyTo}) async {
-    if (text.trim().isEmpty || currentAccountId == null) return false;
+  // ✅ إضافة صورة للتعليق
+  Future<bool> addPostComment(dynamic postId, String text, {String? replyTo, File? imageFile}) async {
+    if ((text.trim().isEmpty && imageFile == null) || currentAccountId == null) return false;
     try {
+      String? imageUrl;
+      if (imageFile != null) imageUrl = await uploadGeneralImage(imageFile, 'comments');
       await supabase.from('post_comments').insert({
-        'post_id': postId, 'account_id': currentAccountId, 'user_name': currentUserName, 'comment_text': text.trim(), 'reply_to': replyTo,
+        'post_id': postId, 'account_id': currentAccountId, 'user_name': currentUserName, 'comment_text': text.trim(), 'reply_to': replyTo, 'image_url': imageUrl,
       });
       postCommentCounts[postId] = (postCommentCounts[postId] ?? 0) + 1; notifyListeners(); return true;
     } catch (e) { return false; }
@@ -287,13 +301,15 @@ class AppData extends ChangeNotifier {
   Future<void> loadCommentCounts() async { try { final result = await supabase.from('news_comments').select('news_id'); commentCounts.clear(); for (final item in result) { final id = item['news_id']; commentCounts[id] = (commentCounts[id] ?? 0) + 1; } } catch (e) {} }
   Future<List<Map<String, dynamic>>> getComments(dynamic newsId) async { try { final result = await supabase.from('news_comments').select().eq('news_id', newsId).order('created_at', ascending: false); return List<Map<String, dynamic>>.from(result); } catch (e) { return []; } }
 
-  // ✅ إضافة replyTo لتعليقات الأخبار
-  Future<bool> addComment(dynamic newsId, String userName, String text, {String? replyTo}) async {
-    if (text.trim().isEmpty) return false;
+  // ✅ إضافة صورة للتعليق
+  Future<bool> addComment(dynamic newsId, String userName, String text, {String? replyTo, File? imageFile}) async {
+    if ((text.trim().isEmpty && imageFile == null)) return false;
     try {
       final clientId = await getClientId();
+      String? imageUrl;
+      if (imageFile != null) imageUrl = await uploadGeneralImage(imageFile, 'comments');
       await supabase.from('news_comments').insert({
-        'news_id': newsId, 'client_id': clientId, 'user_name': userName, 'comment_text': text.trim(), 'reply_to': replyTo,
+        'news_id': newsId, 'client_id': clientId, 'user_name': userName, 'comment_text': text.trim(), 'reply_to': replyTo, 'image_url': imageUrl,
       });
       commentCounts[newsId] = (commentCounts[newsId] ?? 0) + 1; notifyListeners(); return true;
     } catch (e) { return false; }
