@@ -8,77 +8,35 @@ import '../core/colors.dart';
 import '../core/helpers.dart';
 import '../data/app_data.dart';
 
-// ================= المنشورات =================
-class PostsPage extends StatefulWidget {
+// ================= 1. صفحة المنشورات (للعرض فقط الآن) =================
+class PostsPage extends StatelessWidget {
   final AppData data;
   const PostsPage({super.key, required this.data});
-  @override
-  State<PostsPage> createState() => _PostsPageState();
-}
-
-class _PostsPageState extends State<PostsPage> {
-  final textCtrl = TextEditingController();
-  File? _image;
-  bool _loading = false;
-
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (picked != null) setState(() => _image = File(picked.path));
-  }
-
-  Future<void> _post() async {
-    if (textCtrl.text.trim().isEmpty && _image == null) return;
-    setState(() => _loading = true);
-    final ok = await widget.data.addPost(textCtrl.text, _image);
-    if (!mounted) return;
-    setState(() { _loading = false; if (ok) { textCtrl.clear(); _image = null; } });
-    if (ok) showSnack(context, 'تم النشر بنجاح!');
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('المنشورات')),
-      body: Column(children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
-            TextField(controller: textCtrl, maxLines: 3, decoration: const InputDecoration(hintText: 'بماذا تفكر يا أوتاكو؟', border: InputBorder.none)),
-            if (_image != null) Stack(alignment: Alignment.topRight, children: [
-              Image.file(_image!, height: 150, width: double.infinity, fit: BoxFit.cover),
-              IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _image = null)),
-            ]),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              IconButton(icon: const Icon(Icons.image, color: AppColors.gold), onPressed: _pickImage),
-              FilledButton.icon(onPressed: _loading ? null : _post, icon: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send), label: const Text('نشر')),
-            ]),
-          ]))),
-        ),
-        Expanded(
-          child: AnimatedBuilder(
-            animation: widget.data,
-            builder: (context, _) {
-              if (widget.data.posts.isEmpty) return const Center(child: Text('لا توجد منشورات بعد.'));
-              return ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: widget.data.posts.length,
-                itemBuilder: (_, i) => PostCard(data: widget.data, post: widget.data.posts[i], isProfile: false),
-              );
-            },
-          ),
-        ),
-      ]),
+      body: AnimatedBuilder(
+        animation: data,
+        builder: (context, _) {
+          if (data.posts.isEmpty) return const Center(child: Text('لا توجد منشورات بعد.'));
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: data.posts.length,
+            itemBuilder: (_, i) => PostCard(data: data, post: data.posts[i]),
+          );
+        },
+      ),
     );
   }
 }
 
-// 🃏 بطاقة المنشور (مشتركة بين صفحة المنشورات وصفحة حسابي)
+// 🃏 بطاقة المنشور (مشتركة)
 class PostCard extends StatelessWidget {
   final AppData data;
   final Map<String, dynamic> post;
-  final bool isProfile;
-  const PostCard({super.key, required this.data, required this.post, required this.isProfile});
+  const PostCard({super.key, required this.data, required this.post});
 
   @override
   Widget build(BuildContext context) {
@@ -134,7 +92,6 @@ class PostCard extends StatelessWidget {
   }
 }
 
-// 📝 نافذة تعليقات المنشورات
 class PostCommentsSheet extends StatefulWidget {
   final AppData data; final dynamic postId;
   const PostCommentsSheet({super.key, required this.data, required this.postId});
@@ -185,27 +142,53 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
   }
 }
 
-// ================= الرسائل الخاصة =================
+// ================= 2. الرسائل الخاصة (مع ميزة المقروء وغير المقروء) =================
 class PrivateMessagesPage extends StatelessWidget {
   final AppData data;
   const PrivateMessagesPage({super.key, required this.data});
   @override
   Widget build(BuildContext context) {
-    final others = data.players.where((p) => parseInt(p['account_id']) != data.currentAccountId).toList();
-    return Scaffold(
-      appBar: AppBar(title: const Text('الرسائل')),
-      body: others.isEmpty ? const Center(child: Text('لا يوجد مستخدمون آخرون.')) : ListView.builder(
-        itemCount: others.length,
-        itemBuilder: (_, i) {
-          final p = others[i]; final avatar = clean(p['avatar_url']); final name = clean(p['name']);
-          return Card(child: ListTile(
-            leading: GestureDetector(onTap: () => showAvatarDialog(context, avatar, name), child: CircleAvatar(backgroundColor: AppColors.gold, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, color: Colors.black) : null)),
-            title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(name))),
-            trailing: const Icon(Icons.message),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(data: data, other: p))),
-          ));
-        },
-      ),
+    return AnimatedBuilder(
+      animation: data,
+      builder: (context, _) {
+        final others = data.players.where((p) => parseInt(p['account_id']) != data.currentAccountId).toList();
+        return Scaffold(
+          appBar: AppBar(title: const Text('الرسائل')),
+          body: others.isEmpty ? const Center(child: Text('لا يوجد مستخدمون آخرون.')) : ListView.builder(
+            itemCount: others.length,
+            itemBuilder: (_, i) {
+              final p = others[i]; 
+              final avatar = clean(p['avatar_url']); 
+              final name = clean(p['name']);
+              final userId = parseInt(p['account_id']);
+              final unreadCount = data.unreadMessageCounts[userId] ?? 0; // 👈 جلب عدد الرسائل غير المقروءة
+
+              return Card(child: ListTile(
+                leading: GestureDetector(
+                  onTap: () => showAvatarDialog(context, avatar, name), 
+                  child: CircleAvatar(backgroundColor: AppColors.gold, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, color: Colors.black) : null)
+                ),
+                title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(name))),
+                // 👇 إظهار التنبيه الأحمر
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (unreadCount > 0)
+                      Badge(
+                        label: Text('$unreadCount'),
+                        backgroundColor: Colors.red,
+                        textColor: Colors.white,
+                      ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.message, color: AppColors.gold),
+                  ],
+                ),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(data: data, other: p))),
+              ));
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -253,7 +236,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ================= المعرض والجوائز =================
+// ================= 3. المعرض والجوائز =================
 class GalleryPage extends StatefulWidget {
   final AppData data;
   const GalleryPage({super.key, required this.data});
