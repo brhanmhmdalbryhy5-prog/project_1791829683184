@@ -1,492 +1,322 @@
-import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-
+import 'package:supabase_flutter/supabase_flutter.dart' hide toInt;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/colors.dart';
 import '../core/helpers.dart';
-import '../data/app_data.dart';
-import 'social_screens.dart';
-import 'admin_screens.dart';
-import 'games_screens.dart';
 
-class HomePage extends StatefulWidget {
-  final AppData data;
-  const HomePage({super.key, required this.data});
-  @override
-  State<HomePage> createState() => _HomePageState();
+class LocalCache {
+  static const String _prefix = 'mr_otaku_cache_';
+  static SharedPreferences? _prefs;
+  static Future<void> init() async => _prefs ??= await SharedPreferences.getInstance();
+  static Future<void> saveString(String key, String? value) async { await init(); try { if (value == null) { await _prefs!.remove('$_prefix$key'); } else { await _prefs!.setString('$_prefix$key', value); } } catch (_) {} }
+  static String? loadString(String key) => _prefs?.getString('$_prefix$key');
+  static Future<void> saveInt(String key, int? value) async { await init(); try { if (value == null) { await _prefs!.remove('$_prefix$key'); } else { await _prefs!.setInt('$_prefix$key', value); } } catch (_) {} }
+  static int? loadInt(String key) => _prefs?.getInt('$_prefix$key');
+  static Future<void> remove(String key) async { await init(); try { await _prefs!.remove('$_prefix$key'); } catch (_) {} }
 }
 
-class _HomePageState extends State<HomePage> {
-  int index = 0;
-  Timer? _playersRefreshTimer;
+class AppData extends ChangeNotifier {
+  final supabase = Supabase.instance.client;
 
-  @override
-  void initState() {
-    super.initState();
-    widget.data.updateLastSeen();
-    _playersRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
-      await widget.data.updateLastSeen();
-      await widget.data.loadPlayers();
-      await widget.data.loadUnreadMessagesCount();
-    });
-  }
+  List<Map<String, dynamic>> news = [];
+  List<Map<String, dynamic>> players = [];
+  List<Map<String, dynamic>> latest = [];
+  List<Map<String, dynamic>> messages = [];
+  List<Map<String, dynamic>> purchaseRequests = [];
+  List<Map<String, dynamic>> notifications = [];
+  List<Map<String, dynamic>> quizQuestions = [];
+  List<Map<String, dynamic>> quizResults = [];
+  List<Map<String, dynamic>> gallery = [];
+  List<Map<String, dynamic>> posts = [];
+  List<Map<String, dynamic>> privateMessages = [];
+  List<Map<String, dynamic>> userRewards = [];
 
-  @override
-  void dispose() {
-    _playersRefreshTimer?.cancel();
-    super.dispose();
-  }
+  final Map<dynamic, int> postLikeCounts = {};
+  final Set<String> likedPosts = {};
+  final Map<dynamic, int> postCommentCounts = {};
 
-  @override
-  Widget build(BuildContext context) {
-    final pages = [
-      HomeTab(data: widget.data),
-      PostsPage(data: widget.data),
-      PrivateMessagesPage(data: widget.data),
-      ServicesPage(data: widget.data),
-      ProfilePage(data: widget.data),
-    ];
+  final Map<dynamic, int> likeCounts = {};
+  final Set<String> likedNews = {};
+  final Map<dynamic, int> commentCounts = {};
 
-    // ✅ تم تصحيح هذا السطر
-    final totalUnreadMessages = widget.data.unreadMessageCounts.values.fold<int>(0, (a, b) => a + b);
+  Map<String, dynamic>? activePoll;
+  List<Map<String, dynamic>> activePollOptions = [];
+  List<Map<String, dynamic>> pollVoters = [];
+  final Map<dynamic, int> pollVoteCounts = {};
+  String? votedPollId;
 
-    return Scaffold(
-      body: IndexedStack(index: index, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (value) async {
-          await playClickSound();
-          if (!mounted) return;
-          setState(() => index = value);
-        },
-        destinations: [
-          const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
-          const NavigationDestination(icon: Icon(Icons.post_add), selectedIcon: Icon(Icons.post_add, color: AppColors.gold), label: 'المنشورات'),
-          NavigationDestination(
-            icon: Badge(
-              isLabelVisible: totalUnreadMessages > 0,
-              backgroundColor: Colors.red,
-              label: Text('$totalUnreadMessages'),
-              child: const Icon(Icons.forum_outlined),
-            ),
-            selectedIcon: const Icon(Icons.forum),
-            label: 'الرسائل',
-          ),
-          NavigationDestination(
-            icon: Badge(isLabelVisible: widget.data.hasNewQuiz || widget.data.hasNewGallery, backgroundColor: AppColors.gold, child: const Icon(Icons.apps_outlined)),
-            selectedIcon: const Icon(Icons.apps),
-            label: 'الخدمات',
-          ),
-          const NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'حسابي'),
-        ],
-      ),
-    );
-  }
-}
+  final Map<int, int> unreadMessageCounts = {};
 
-// ================= 1. الرئيسية (مع شريط الأخبار المتحرك) =================
-class HomeTab extends StatefulWidget {
-  final AppData data;
-  const HomeTab({super.key, required this.data});
-  @override
-  State<HomeTab> createState() => _HomeTabState();
-}
-
-class _HomeTabState extends State<HomeTab> {
-  final PageController controller = PageController();
-  Timer? timer;
-  int newsIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted || widget.data.news.isEmpty || !controller.hasClients) return;
-      newsIndex = (newsIndex + 1 >= widget.data.news.length) ? 0 : newsIndex + 1;
-      controller.animateToPage(newsIndex, duration: const Duration(milliseconds: 650), curve: Curves.easeInOut);
-    });
-  }
-
-  @override
-  void dispose() { timer?.cancel(); controller.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('مستر أوتاكو', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)),
-        actions: [
-          IconButton(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(data: widget.data))),
-            icon: Badge(isLabelVisible: widget.data.unreadNotificationCount > 0, backgroundColor: AppColors.gold, label: Text(widget.data.unreadNotificationCount.toString(), style: const TextStyle(color: Colors.black)), child: const Icon(Icons.notifications)),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: widget.data.loadData,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [AppColors.getColor(0), AppColors.getColor(3)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: AppColors.getColor(3).withOpacity(0.4), blurRadius: 15, spreadRadius: 2)],
-              ),
-              child: Column(children: [
-                GestureDetector(
-                  onTap: () => showAvatarDialog(context, widget.data.currentAvatar, widget.data.currentUserName),
-                  child: CircleAvatar(radius: 40, backgroundColor: Colors.white, backgroundImage: widget.data.currentAvatar.isNotEmpty ? CachedNetworkImageProvider(widget.data.currentAvatar) : null, child: widget.data.currentAvatar.isEmpty ? const Icon(Icons.person, size: 40, color: AppColors.gold) : null),
-                ),
-                const SizedBox(height: 10),
-                Text('مرحباً ${widget.data.currentUserName}', style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold, color: Colors.white)),
-                const SizedBox(height: 14),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  _MiniStat(title: 'النقاط', value: widget.data.currentPoints.toString()),
-                  const SizedBox(width: 25),
-                  _MiniStat(title: 'المستوى', value: widget.data.currentLevel),
-                ]),
-              ]),
-            ),
-            const SizedBox(height: 16),
-            
-            if (widget.data.news.isNotEmpty)
-              SizedBox(
-                height: 190,
-                child: PageView.builder(
-                  controller: controller,
-                  itemCount: widget.data.news.length,
-                  itemBuilder: (context, index) {
-                    final item = widget.data.news[index];
-                    final image = clean(item['image_url']);
-                    return GestureDetector(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NewsDetailsPage(news: item))),
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.borderGold)),
-                        clipBehavior: Clip.antiAlias,
-                        child: Stack(fit: StackFit.expand, children: [
-                          if (image.isNotEmpty) CachedNetworkImage(imageUrl: image, fit: BoxFit.cover, errorWidget: (_, __, ___) => Container(color: AppColors.cardBlack, child: const Icon(Icons.newspaper, size: 50, color: AppColors.gold))) else Container(color: AppColors.cardBlack, child: const Icon(Icons.newspaper, size: 50, color: AppColors.gold)),
-                          Positioned(bottom: 0, left: 0, right: 0, child: Container(padding: const EdgeInsets.all(14), decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black87])), child: Text(clean(item['title']), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: AppColors.gold)))),
-                        ]),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 16),
-            
-            if (widget.data.importantNews.trim().isNotEmpty)
-              Container(
-                decoration: BoxDecoration(color: AppColors.black, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.getColor(9), width: 2)),
-                padding: const EdgeInsets.all(16),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Icon(Icons.campaign, color: AppColors.getColor(9), size: 30),
-                  const SizedBox(width: 12),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('إعلان مهم', style: TextStyle(color: AppColors.getColor(9), fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 6),
-                    Text(widget.data.importantNews, style: const TextStyle(color: Colors.white, fontSize: 15)),
-                  ])),
-                ]),
-              ),
-            if (widget.data.importantNews.trim().isNotEmpty) const SizedBox(height: 16),
-
-            if (widget.data.leader != null)
-              Card(
-                color: AppColors.getColor(4).withOpacity(0.1),
-                child: ListTile(
-                  leading: GestureDetector(onTap: () => showAvatarDialog(context, clean(widget.data.leader!['avatar_url']), clean(widget.data.leader!['name'])), child: CircleAvatar(backgroundColor: AppColors.getColor(4), backgroundImage: clean(widget.data.leader!['avatar_url']).isNotEmpty ? CachedNetworkImageProvider(clean(widget.data.leader!['avatar_url'])) : null, child: clean(widget.data.leader!['avatar_url']).isEmpty ? const Icon(Icons.emoji_events, color: Colors.white) : null)),
-                  title: Text('متصدر الأوتاكو', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColor(4))),
-                  subtitle: Text(clean(widget.data.leader!['name'])),
-                  trailing: Text('${parseInt(widget.data.leader!['points'])} نقطة', style: TextStyle(color: AppColors.getColor(4), fontWeight: FontWeight.bold)),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniStat extends StatelessWidget {
-  final String title; final String value;
-  const _MiniStat({required this.title, required this.value});
-  @override
-  Widget build(BuildContext context) {
-    return Column(children: [
-      Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-      Text(title, style: const TextStyle(color: Colors.white70)),
-    ]);
-  }
-}
-
-// ================= 2. صفحة حسابي (فيها زر النشر) =================
-class ProfilePage extends StatefulWidget {
-  final AppData data;
-  const ProfilePage({super.key, required this.data});
-  @override
-  State<ProfilePage> createState() => _ProfilePageState();
-}
-
-class _ProfilePageState extends State<ProfilePage> {
-  final textCtrl = TextEditingController();
-  File? _image;
-  bool _loading = false;
-
-  Future<void> _pickAvatar() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
-    if (picked == null) return;
-    if (!mounted) return;
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.gold)));
-    final ok = await widget.data.updateAvatar(File(picked.path));
-    if (!mounted) return;
-    Navigator.pop(context);
-    showSnack(context, ok ? 'تم تحديث الأيقونة.' : 'تعذر تحديث الأيقونة.');
-  }
-
-  Future<void> _pickPostImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (picked != null) setState(() => _image = File(picked.path));
-  }
-
-  Future<void> _post() async {
-    if (textCtrl.text.trim().isEmpty && _image == null) return;
-    setState(() => _loading = true);
-    final ok = await widget.data.addPost(textCtrl.text, _image);
-    if (!mounted) return;
-    setState(() { _loading = false; if (ok) { textCtrl.clear(); _image = null; } });
-    if (ok) showSnack(context, 'تم النشر بنجاح!');
-  }
-
-  Future<void> logout(BuildContext context) async {
-    await playClickSound();
-    await widget.data.logoutAccount();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: widget.data,
-      builder: (context, _) {
-        final badge = widget.data.currentBadge;
-        final avatar = widget.data.currentAvatar;
-        final myPosts = widget.data.myPosts;
-
-        return Scaffold(
-          appBar: AppBar(title: const Text('حسابي'), actions: [
-            IconButton(onPressed: () => logout(context), icon: const Icon(Icons.logout, color: Colors.red)),
-          ]),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(children: [
-                    Stack(children: [
-                      GestureDetector(
-                        onTap: () => showAvatarDialog(context, avatar, widget.data.currentUserName),
-                        child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.gold, width: 3)), child: CircleAvatar(radius: 45, backgroundColor: AppColors.inputBlack, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, size: 45, color: AppColors.gold) : null)),
-                      ),
-                      Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: _pickAvatar, child: Container(decoration: BoxDecoration(color: AppColors.gold, shape: BoxShape.circle, border: Border.all(color: AppColors.black, width: 2)), padding: const EdgeInsets.all(8), child: const Icon(Icons.camera_alt, size: 20, color: Colors.black)))),
-                    ]),
-                    const SizedBox(height: 12),
-                    Text(widget.data.currentUserName, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: AppColors.gold)),
-                    Text('معرف الحساب: ${widget.data.currentAccountId}'),
-                    Text('المستوى: ${widget.data.currentLevel} | النقاط: ${widget.data.currentPoints}'),
-                    if (badge != null) Text('${badge.icon} ${badge.name}'),
-                    if (widget.data.userRewards.isNotEmpty)
-                      Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(spacing: 8, children: widget.data.userRewards.map((r) => Text(clean(r['reward_icon']), style: const TextStyle(fontSize: 24))).toList())),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (widget.data.isAdmin)
-                ServiceTile(icon: Icons.admin_panel_settings, title: 'لوحة الإدارة', subtitle: 'إدارة التطبيق', colorIndex: 11, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPanelPage(data: widget.data)))),
-              
-              const SizedBox(height: 16),
-              
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(children: [
-                    TextField(controller: textCtrl, maxLines: 3, decoration: const InputDecoration(hintText: 'بماذا تفكر يا أوتاكو؟', border: InputBorder.none)),
-                    if (_image != null) Stack(alignment: Alignment.topRight, children: [
-                      Image.file(_image!, height: 150, width: double.infinity, fit: BoxFit.cover),
-                      IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _image = null)),
-                    ]),
-                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                      IconButton(icon: const Icon(Icons.image, color: AppColors.gold), onPressed: _pickPostImage),
-                      FilledButton.icon(onPressed: _loading ? null : _post, icon: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send), label: const Text('نشر')),
-                    ]),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              const Text('منشوراتي', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.gold)),
-              const SizedBox(height: 10),
-              if (myPosts.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لم تقم بنشر أي شيء بعد.')))
-              else ...myPosts.map((post) => PostCard(data: widget.data, post: post)),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ================= الخدمات =================
-class ServicesPage extends StatelessWidget {
-  final AppData data;
-  const ServicesPage({super.key, required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('الخدمات')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ServiceTile(icon: Icons.emoji_events, title: 'خزانة الجوائز', subtitle: 'شاهد الجوائز التي حصلت عليها', colorIndex: 1, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RewardsPage(data: data)))),
-          ServiceTile(icon: Icons.photo_library, title: 'معرض الصور', subtitle: 'شارك صورك المفضلة مع المجتمع', badge: data.hasNewGallery, colorIndex: 3, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryPage(data: data))).then((_) => data.markGallerySeen())),
-          ServiceTile(icon: Icons.quiz, title: 'لعبة الأسئلة', subtitle: 'ثلاثة أنواع من الأسئلة', badge: data.hasNewQuiz, colorIndex: 4, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => QuestionsHubPage(data: data)))),
-          ServiceTile(icon: Icons.leaderboard, title: 'المتصدرون', subtitle: 'شاهد ترتيب لاعبي الأوتاكو', colorIndex: 7, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LeaderboardPage(data: data)))),
-          ServiceTile(icon: Icons.message, title: 'إرسال رسالة للإدارة', subtitle: 'تواصل مع إدارة مستر أوتاكو', colorIndex: 9, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SendMessagePage(data: data)))),
-        ],
-      ),
-    );
-  }
-}
-
-class ServiceTile extends StatelessWidget {
-  final IconData icon; final String title; final String subtitle; final VoidCallback onTap; final bool badge; final int colorIndex;
-  const ServiceTile({super.key, required this.icon, required this.title, required this.subtitle, required this.onTap, required this.colorIndex, this.badge = false});
-  @override
-  Widget build(BuildContext context) {
-    final color = AppColors.getColor(colorIndex);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        onTap: onTap,
-        leading: Badge(isLabelVisible: badge, backgroundColor: Colors.red, child: CircleAvatar(backgroundColor: color, child: Icon(icon, color: Colors.white))),
-        title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.arrow_back_ios, size: 18),
-      ),
-    );
-  }
-}
-
-// ================= الأخبار =================
-class NewsPage extends StatelessWidget {
-  final AppData data;
-  const NewsPage({super.key, required this.data});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('الأخبار')),
-      body: RefreshIndicator(
-        onRefresh: data.loadData,
-        child: data.news.isEmpty ? ListView(children: const [SizedBox(height: 200), Center(child: Text('لا توجد أخبار حالياً.'))]) : ListView.builder(padding: const EdgeInsets.all(12), itemCount: data.news.length, itemBuilder: (_, index) => NewsCard(data: data, news: data.news[index])),
-      ),
-    );
-  }
-}
-
-class NewsCard extends StatelessWidget {
-  final AppData data; final Map<String, dynamic> news;
-  const NewsCard({super.key, required this.data, required this.news});
-  @override
-  Widget build(BuildContext context) {
-    final id = news['id'];
-    final image = clean(news['image_url']);
-    final liked = data.likedNews.contains(id.toString());
-    return Card(
-      margin: const EdgeInsets.only(bottom: 14), clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (image.isNotEmpty) CachedNetworkImage(imageUrl: image, width: double.infinity, height: 210, fit: BoxFit.cover, errorWidget: (_, __, ___) => const SizedBox(height: 210, child: Center(child: Icon(Icons.broken_image, size: 50, color: AppColors.gold)))),
-        Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(clean(news['title']), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.gold)),
-          const SizedBox(height: 8),
-          Text(clean(news['description'])),
-          const SizedBox(height: 10),
-          Row(children: [
-            IconButton(onPressed: () async { await playClickSound(); await data.toggleLike(id); }, icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? Colors.red : AppColors.gold)),
-            Text('${data.likeCounts[id] ?? 0}'),
-            const SizedBox(width: 12),
-            IconButton(onPressed: () async { await playClickSound(); if (!context.mounted) return; Navigator.push(context, MaterialPageRoute(builder: (_) => CommentsPage(data: data, newsId: id))); }, icon: const Icon(Icons.comment_outlined)),
-            Text('${data.commentCounts[id] ?? 0}'),
-          ]),
-        ])),
-      ]),
-    );
-  }
-}
-
-class NewsDetailsPage extends StatelessWidget {
-  final Map<String, dynamic> news;
-  const NewsDetailsPage({super.key, required this.news});
-  @override
-  Widget build(BuildContext context) {
-    final image = clean(news['image_url']);
-    return Scaffold(
-      appBar: AppBar(title: const Text('الخبر')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        if (image.isNotEmpty) ClipRRect(borderRadius: BorderRadius.circular(18), child: CachedNetworkImage(imageUrl: image, height: 230, fit: BoxFit.cover)),
-        const SizedBox(height: 15),
-        Text(clean(news['title']), style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: AppColors.gold)),
-        const SizedBox(height: 12),
-        Text(clean(news['description']), style: const TextStyle(fontSize: 17, height: 1.6)),
-      ]),
-    );
-  }
-}
-
-class CommentsPage extends StatefulWidget {
-  final AppData data; final dynamic newsId;
-  const CommentsPage({super.key, required this.data, required this.newsId});
-  @override
-  State<CommentsPage> createState() => _CommentsPageState();
-}
-
-class _CommentsPageState extends State<CommentsPage> {
-  final controller = TextEditingController();
-  List<Map<String, dynamic>> comments = [];
+  String importantNews = '';
+  String importantNewsUpdatedAt = '';
+  final Set<String> _readNotifications = {};
   bool loading = true;
-  @override
-  void initState() { super.initState(); load(); }
-  Future<void> load() async { await widget.data.loadPlayers(); final result = await widget.data.getComments(widget.newsId); if (!mounted) return; setState(() { comments = result; loading = false; }); }
-  Future<void> send() async { if (controller.text.trim().isEmpty) return; await playClickSound(); final ok = await widget.data.addComment(widget.newsId, widget.data.currentUserName, controller.text); if (!mounted) return; if (ok) { controller.clear(); await load(); } else { showSnack(context, 'تعذر إرسال التعليق.'); } }
-  @override
-  void dispose() { controller.dispose(); super.dispose(); }
+  bool _isAdmin = false;
+  int? currentAccountId;
+  String currentUserName = '';
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('التعليقات')),
-      body: Column(children: [
-        Expanded(child: loading ? const Center(child: CircularProgressIndicator(color: AppColors.gold)) : comments.isEmpty ? const Center(child: Text('لا توجد تعليقات بعد.')) : AnimatedBuilder(animation: widget.data, builder: (context, _) => ListView.builder(padding: const EdgeInsets.all(12), itemCount: comments.length, itemBuilder: (_, index) { final item = comments[index]; final name = clean(item['user_name']); final url = widget.data.avatarForAccount(item['account_id']); return Card(child: ListTile(leading: GestureDetector(onTap: () => showAvatarDialog(context, url, name), child: CircleAvatar(backgroundColor: AppColors.gold, backgroundImage: url.isNotEmpty ? CachedNetworkImageProvider(url) : null, child: url.isEmpty ? const Icon(Icons.person, color: Colors.black) : null)), title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(name))), subtitle: Text(clean(item['comment_text'])))); }))),
-        Padding(padding: const EdgeInsets.all(10), child: Row(children: [Expanded(child: TextField(controller: controller, decoration: const InputDecoration(labelText: 'اكتب تعليقك'))), IconButton(onPressed: send, icon: const Icon(Icons.send))])),
-      ]),
-    );
-  }
-}
+  String _lastSeenNewsId = '';
+  int _lastSeenQuizCount = 0;
+  int _lastSeenGalleryCount = 0;
 
-class NotificationsPage extends StatelessWidget {
-  final AppData data;
-  const NotificationsPage({super.key, required this.data});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('الإشعارات'), actions: [if (data.notifications.isNotEmpty) IconButton(onPressed: () async => await data.markAllNotificationsRead(), icon: const Icon(Icons.done_all))]),
-      body: data.notifications.isEmpty ? const Center(child: Text('لا توجد إشعارات.')) : ListView.builder(padding: const EdgeInsets.all(12), itemCount: data.notifications.length, itemBuilder: (_, index) { final item = data.notifications[index]; final read = data.isNotificationRead(item['id']); return Card(child: ListTile(leading: Icon(read ? Icons.notifications_none : Icons.notifications_active), title: Text(clean(item['title']), style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)), subtitle: Text(clean(item['body'])), onTap: () async => await data.markNotificationRead(item['id']))); }),
-    );
+  bool get isAdmin => _isAdmin;
+  bool get hasAccount => currentAccountId != null && currentUserName.trim().isNotEmpty;
+  bool get hasQuizQuestions => quizQuestions.isNotEmpty;
+  int get unreadNotificationCount => notifications.where((n) => !_readNotifications.contains(n['id'].toString())).length;
+  bool get hasNewNews => news.isNotEmpty && clean(news.first['id']) != _lastSeenNewsId;
+  bool get hasNewQuiz => quizQuestions.length > _lastSeenQuizCount && _lastSeenQuizCount >= 0;
+  bool get hasNewGallery => gallery.length > _lastSeenGalleryCount;
+  bool get hasNewImportantNews {
+    if (importantNews.isEmpty) return false;
+    final lastSeen = LocalCache.loadString('last_seen_important_news');
+    return importantNewsUpdatedAt != lastSeen;
   }
+
+  Map<String, dynamic>? get currentPlayer {
+    if (currentAccountId == null) return null;
+    for (final player in players) { if (parseInt(player['account_id']) == currentAccountId) return player; }
+    return null;
+  }
+  String get currentAvatar => clean(currentPlayer?['avatar_url']);
+  int get currentPoints => parseInt(currentPlayer?['points']);
+  String get currentLevel => getUserLevel(currentPoints);
+  BadgeInfo? get currentBadge => getCurrentBadge(currentPoints);
+
+  Map<String, dynamic>? get leader {
+    if (players.isEmpty) return null;
+    final sorted = [...players]; sorted.sort((a, b) => parseInt(b['points']).compareTo(parseInt(a['points']))); return sorted.first;
+  }
+
+  List<Map<String, dynamic>> get myPosts => posts.where((p) => parseInt(p['account_id']) == currentAccountId).toList();
+
+  String avatarForAccount(dynamic accountId) {
+    if (accountId == null) return '';
+    final id = parseInt(accountId);
+    if (id <= 0) return '';
+    for (final p in players) { if (parseInt(p['account_id']) == id) return clean(p['avatar_url']); }
+    return '';
+  }
+  String avatarForName(String name) {
+    final n = name.trim().toLowerCase();
+    if (n.isEmpty) return '';
+    for (final p in players) { if (clean(p['name']).trim().toLowerCase() == n) return clean(p['avatar_url']); }
+    return '';
+  }
+
+  Future<void> setAdminSession(bool value) async { _isAdmin = value; notifyListeners(); }
+  Future<void> markNewsSeen() async { if (news.isNotEmpty) { _lastSeenNewsId = clean(news.first['id']); await LocalCache.saveString('last_seen_news_id', _lastSeenNewsId); notifyListeners(); } }
+  Future<void> markQuizSeen() async { _lastSeenQuizCount = quizQuestions.length; await LocalCache.saveInt('last_seen_quiz_count', _lastSeenQuizCount); notifyListeners(); }
+  Future<void> markGallerySeen() async { _lastSeenGalleryCount = gallery.length; await LocalCache.saveInt('last_seen_gallery_count', _lastSeenGalleryCount); notifyListeners(); }
+  Future<void> markImportantNewsSeen() async { await LocalCache.saveString('last_seen_important_news', importantNewsUpdatedAt); notifyListeners(); }
+
+  Future<void> updateLastSeen() async {
+    if (currentAccountId == null) return;
+    try {
+      await supabase.from('players').update({'last_seen': DateTime.now().toUtc().toIso8601String()}).eq('account_id', currentAccountId!);
+    } catch (e) { debugPrint('Update last seen error: $e'); }
+  }
+
+  Future<void> loadLocalAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    currentAccountId = int.tryParse(prefs.getString('mr_otaku_account_id') ?? '');
+    currentUserName = prefs.getString('mr_otaku_user_name')?.trim() ?? '';
+    _lastSeenNewsId = LocalCache.loadString('last_seen_news_id') ?? '';
+    _lastSeenQuizCount = LocalCache.loadInt('last_seen_quiz_count') ?? 0;
+    _lastSeenGalleryCount = LocalCache.loadInt('last_seen_gallery_count') ?? 0;
+  }
+
+  Future<bool> loginAccount(String name, int accountId) async {
+    if (name.trim().isEmpty || accountId <= 0) return false;
+    try {
+      final player = await supabase.from('players').select().eq('account_id', accountId).maybeSingle();
+      if (player == null) return false;
+      final savedName = clean(player['name']).trim();
+      if (savedName.toLowerCase() != name.trim().toLowerCase()) return false;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('mr_otaku_account_id', accountId.toString());
+      await prefs.setString('mr_otaku_user_name', savedName);
+      currentAccountId = accountId; currentUserName = savedName;
+      notifyListeners(); return true;
+    } catch (e) { return false; }
+  }
+
+  Future<void> logoutAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('mr_otaku_account_id'); await prefs.remove('mr_otaku_user_name');
+    currentAccountId = null; currentUserName = ''; notifyListeners();
+  }
+
+  Future<void> loadData() async {
+    loading = true; notifyListeners();
+    try {
+      final results = await Future.wait([
+        supabase.from('news').select().order('created_at', ascending: false),
+        supabase.from('players').select().order('points', ascending: false),
+        supabase.from('latest').select().order('created_at', ascending: false),
+      ]);
+      news = List<Map<String, dynamic>>.from(results[0]);
+      players = List<Map<String, dynamic>>.from(results[1]);
+      latest = List<Map<String, dynamic>>.from(results[2]);
+      await loadLikes(); await loadCommentCounts(); await loadNotifications();
+      await loadPoll(); await loadQuizQuestions(); await loadImportantNews();
+      await loadGallery(); await loadPosts(); await loadUserRewards(); await loadUnreadMessagesCount();
+      if (_isAdmin) {
+        final msgData = await supabase.from('messages').select().order('created_at', ascending: false); messages = List<Map<String, dynamic>>.from(msgData);
+        final reqData = await supabase.from('purchase_requests').select().order('created_at', ascending: false); purchaseRequests = List<Map<String, dynamic>>.from(reqData);
+        final quizData = await supabase.from('quiz_results').select().order('created_at', ascending: false); quizResults = List<Map<String, dynamic>>.from(quizData);
+      } else { messages = []; purchaseRequests = []; quizResults = []; }
+    } catch (e) { debugPrint('Load data error: $e'); }
+    loading = false; notifyListeners();
+  }
+
+  Future<void> loadPlayers() async { try { final result = await supabase.from('players').select().order('points', ascending: false); players = List<Map<String, dynamic>>.from(result); notifyListeners(); } catch (e) {} }
+  Future<void> loadPosts() async { try { final result = await supabase.from('posts').select().order('created_at', ascending: false); posts = List<Map<String, dynamic>>.from(result); await _loadPostInteractions(); notifyListeners(); } catch (e) {} }
+
+  Future<void> _loadPostInteractions() async {
+    try {
+      final likes = await supabase.from('post_likes').select();
+      postLikeCounts.clear(); likedPosts.clear();
+      for (final item in likes) { final id = item['post_id']; postLikeCounts[id] = (postLikeCounts[id] ?? 0) + 1; if (parseInt(item['account_id']) == currentAccountId) likedPosts.add(id.toString()); }
+      final comments = await supabase.from('post_comments').select('post_id');
+      postCommentCounts.clear();
+      for (final item in comments) { final id = item['post_id']; postCommentCounts[id] = (postCommentCounts[id] ?? 0) + 1; }
+    } catch (e) {}
+  }
+
+  Future<bool> togglePostLike(dynamic postId) async {
+    if (currentAccountId == null) return false;
+    try {
+      final key = postId.toString();
+      if (likedPosts.contains(key)) { await supabase.from('post_likes').delete().eq('post_id', postId).eq('account_id', currentAccountId!); likedPosts.remove(key); postLikeCounts[postId] = max(0, (postLikeCounts[postId] ?? 1) - 1); }
+      else { await supabase.from('post_likes').insert({'post_id': postId, 'account_id': currentAccountId}); likedPosts.add(key); postLikeCounts[postId] = (postLikeCounts[postId] ?? 0) + 1; }
+      notifyListeners(); return true;
+    } catch (e) { return false; }
+  }
+
+  Future<List<Map<String, dynamic>>> getPostComments(dynamic postId) async {
+    try { final result = await supabase.from('post_comments').select().eq('post_id', postId).order('created_at', ascending: true); return List<Map<String, dynamic>>.from(result); } catch (e) { return []; }
+  }
+
+  Future<bool> addPostComment(dynamic postId, String text) async {
+    if (text.trim().isEmpty || currentAccountId == null) return false;
+    try { await supabase.from('post_comments').insert({'post_id': postId, 'account_id': currentAccountId, 'user_name': currentUserName, 'comment_text': text.trim()}); postCommentCounts[postId] = (postCommentCounts[postId] ?? 0) + 1; notifyListeners(); return true; } catch (e) { return false; }
+  }
+
+  Future<bool> addPost(String content, File? imageFile) async {
+    if (currentAccountId == null || content.trim().isEmpty) return false;
+    try { String? imageUrl; if (imageFile != null) imageUrl = await uploadGeneralImage(imageFile, 'posts'); await supabase.from('posts').insert({'account_id': currentAccountId, 'user_name': currentUserName, 'content': content.trim(), 'image_url': imageUrl}); await loadPosts(); return true; } catch (e) { return false; }
+  }
+
+  Future<bool> deletePost(dynamic id) async {
+    if (currentAccountId == null) return false;
+    try { final post = posts.firstWhere((p) => p['id'] == id, orElse: () => {}); if (parseInt(post['account_id']) != currentAccountId && !_isAdmin) return false; await supabase.from('posts').delete().eq('id', id); await loadPosts(); return true; } catch (e) { return false; }
+  }
+
+  Future<void> loadPrivateMessages(int otherUserId) async {
+    if (currentAccountId == null) return;
+    try {
+      final result = await supabase.from('private_messages').select().or('and(sender_id.eq.$currentAccountId,receiver_id.eq.$otherUserId),and(sender_id.eq.$otherUserId,receiver_id.eq.$currentAccountId)').order('created_at', ascending: true);
+      privateMessages = List<Map<String, dynamic>>.from(result);
+      await supabase.from('private_messages').update({'is_read': true}).eq('receiver_id', currentAccountId!).eq('sender_id', otherUserId).eq('is_read', false);
+      unreadMessageCounts.remove(otherUserId); notifyListeners();
+    } catch (e) {}
+  }
+
+  Future<bool> sendPrivateMessage(int receiverId, String message) async {
+    if (currentAccountId == null || message.trim().isEmpty) return false;
+    try { await supabase.from('private_messages').insert({'sender_id': currentAccountId, 'sender_name': currentUserName, 'receiver_id': receiverId, 'message': message.trim()}); return true; } catch (e) { return false; }
+  }
+
+  Future<void> loadUnreadMessagesCount() async {
+    if (currentAccountId == null) return;
+    try {
+      final result = await supabase.from('private_messages').select('sender_id').eq('receiver_id', currentAccountId!).eq('is_read', false);
+      unreadMessageCounts.clear();
+      for (final row in result) { final senderId = parseInt(row['sender_id']); if (senderId > 0) { unreadMessageCounts[senderId] = (unreadMessageCounts[senderId] ?? 0) + 1; } }
+      notifyListeners();
+    } catch (e) {}
+  }
+
+  Future<void> loadUserRewards() async {
+    if (currentAccountId == null) return;
+    try { final result = await supabase.from('user_rewards').select().eq('account_id', currentAccountId!); userRewards = List<Map<String, dynamic>>.from(result); notifyListeners(); } catch (e) {}
+  }
+  Future<bool> claimReward(String rewardName, String rewardIcon) async { if (currentAccountId == null) return false; try { await supabase.from('user_rewards').insert({'account_id': currentAccountId, 'reward_name': rewardName, 'reward_icon': rewardIcon}); await loadUserRewards(); return true; } catch (e) { return false; } }
+  bool hasReward(String rewardName) => userRewards.any((r) => r['reward_name'] == rewardName);
+
+  Future<void> loadImportantNews() async {
+    try { final result = await supabase.from('important_news').select().order('updated_at', ascending: false).limit(1).maybeSingle(); if (result == null) { importantNews = ''; importantNewsUpdatedAt = ''; } else { importantNews = clean(result['content']); importantNewsUpdatedAt = clean(result['updated_at']); } } catch (e) {}
+  }
+  Future<bool> updateImportantNews(String content) async { if (!_isAdmin) return false; try { await supabase.from('important_news').delete().gte('id', 0); await supabase.from('important_news').insert({'content': content.trim(), 'updated_at': DateTime.now().toIso8601String()}); await loadImportantNews(); notifyListeners(); return true; } catch (e) { return false; } }
+  Future<bool> clearImportantNews() async { if (!_isAdmin) return false; try { await supabase.from('important_news').delete().gte('id', 0); importantNews = ''; importantNewsUpdatedAt = ''; notifyListeners(); return true; } catch (e) { return false; } }
+
+  Future<void> loadGallery() async { try { final result = await supabase.from('gallery').select().order('created_at', ascending: false); gallery = List<Map<String, dynamic>>.from(result); } catch (e) { gallery = []; } notifyListeners(); }
+  Future<String?> addGalleryImage(File imageFile, {String caption = ''}) async { if (currentAccountId == null) return 'لم يتم تسجيل الدخول.'; try { final ext = safeExtension(imageFile.path); final path = 'gallery/${currentAccountId}_${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, imageFile); final url = supabase.storage.from('news-images').getPublicUrl(path); await supabase.from('gallery').insert({'account_id': currentAccountId, 'user_name': currentUserName, 'image_url': url, 'caption': caption.trim()}); await loadGallery(); return null; } catch (e) { return 'خطأ: $e'; } }
+  Future<bool> deleteGalleryImage(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('gallery').delete().eq('id', id); await loadGallery(); return true; } catch (e) { return false; } }
+
+  Future<bool> updateAvatar(File imageFile) async {
+    if (currentAccountId == null) return false;
+    try { final ext = safeExtension(imageFile.path); final path = 'avatars/${currentAccountId}_${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, imageFile); final url = supabase.storage.from('news-images').getPublicUrl(path); await supabase.from('players').update({'avatar_url': url}).eq('account_id', currentAccountId!); for (final player in players) { if (parseInt(player['account_id']) == currentAccountId) player['avatar_url'] = url; } notifyListeners(); return true; } catch (e) { return false; }
+  }
+
+  Future<String?> uploadGeneralImage(File file, String folder) async { try { final ext = safeExtension(file.path); final path = '$folder/${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, file); return supabase.storage.from('news-images').getPublicUrl(path); } catch (e) { return null; } }
+
+  Future<void> loadQuizQuestions() async { try { final result = await supabase.from('quiz_questions').select().order('created_at', ascending: true); quizQuestions = List<Map<String, dynamic>>.from(result); } catch (e) { quizQuestions = []; } }
+  Future<void> loadQuizResults() async { if (!_isAdmin) return; try { final result = await supabase.from('quiz_results').select().order('created_at', ascending: false); quizResults = List<Map<String, dynamic>>.from(result); notifyListeners(); } catch (e) {} }
+  Future<void> saveQuizResult({required String quizType, required int correct, required int total}) async { try { await supabase.from('quiz_results').insert({'account_id': currentAccountId, 'user_name': currentUserName, 'quiz_type': quizType, 'correct_answers': correct, 'total_questions': total}); } catch (e) {} }
+  Future<bool> addQuizQuestion({required String question, required String option1, required String option2, required String option3, required String option4, required int correctOption, String quizType = 'direct', String? imageUrl}) async { if (!_isAdmin) return false; try { await supabase.from('quiz_questions').insert({'question': question.trim(), 'option1': option1.trim(), 'option2': option2.trim(), 'option3': option3.trim(), 'option4': option4.trim(), 'correct_option': correctOption, 'quiz_type': quizType, 'image_url': imageUrl}); await loadQuizQuestions(); return true; } catch (e) { return false; } }
+  Future<bool> deleteQuizQuestion(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('quiz_questions').delete().eq('id', id); await loadQuizQuestions(); return true; } catch (e) { return false; } }
+
+  Future<void> loadLikes() async { try { final clientId = await getClientId(); final result = await supabase.from('news_likes').select('news_id, client_id'); likeCounts.clear(); likedNews.clear(); for (final item in result) { final id = item['news_id']; likeCounts[id] = (likeCounts[id] ?? 0) + 1; if (clean(item['client_id']) == clientId) likedNews.add(id.toString()); } } catch (e) {} }
+  Future<bool> toggleLike(dynamic newsId) async { try { final clientId = await getClientId(); final key = newsId.toString(); if (likedNews.contains(key)) { await supabase.from('news_likes').delete().eq('news_id', newsId).eq('client_id', clientId); likedNews.remove(key); likeCounts[newsId] = max(0, (likeCounts[newsId] ?? 1) - 1); } else { await supabase.from('news_likes').insert({'news_id': newsId, 'client_id': clientId}); likedNews.add(key); likeCounts[newsId] = (likeCounts[newsId] ?? 0) + 1; } notifyListeners(); return true; } catch (e) { return false; } }
+  Future<void> loadCommentCounts() async { try { final result = await supabase.from('news_comments').select('news_id'); commentCounts.clear(); for (final item in result) { final id = item['news_id']; commentCounts[id] = (commentCounts[id] ?? 0) + 1; } } catch (e) {} }
+  Future<List<Map<String, dynamic>>> getComments(dynamic newsId) async { try { final result = await supabase.from('news_comments').select().eq('news_id', newsId).order('created_at', ascending: false); return List<Map<String, dynamic>>.from(result); } catch (e) { return []; } }
+  Future<bool> addComment(dynamic newsId, String userName, String text) async { if (text.trim().isEmpty) return false; try { final clientId = await getClientId(); await supabase.from('news_comments').insert({'news_id': newsId, 'client_id': clientId, 'user_name': userName, 'comment_text': text.trim()}); commentCounts[newsId] = (commentCounts[newsId] ?? 0) + 1; notifyListeners(); return true; } catch (e) { return false; } }
+
+  Future<String> getClientId() async { final prefs = await SharedPreferences.getInstance(); String? id = prefs.getString('mr_otaku_client_id'); if (id == null || id.isEmpty) { id = DateTime.now().microsecondsSinceEpoch.toString(); await prefs.setString('mr_otaku_client_id', id); } return id; }
+
+  Future<void> loadNotifications() async { try { final prefs = await SharedPreferences.getInstance(); final saved = prefs.getStringList('mr_otaku_read_notifications'); _readNotifications.clear(); if (saved != null) _readNotifications.addAll(saved); final result = await supabase.from('notifications').select().order('created_at', ascending: false); notifications = List<Map<String, dynamic>>.from(result); } catch (e) {} }
+  bool isNotificationRead(dynamic id) => _readNotifications.contains(id.toString());
+  Future<void> markNotificationRead(dynamic id) async { final prefs = await SharedPreferences.getInstance(); _readNotifications.add(id.toString()); await prefs.setStringList('mr_otaku_read_notifications', _readNotifications.toList()); notifyListeners(); }
+  Future<void> markAllNotificationsRead() async { final prefs = await SharedPreferences.getInstance(); for (final item in notifications) _readNotifications.add(item['id'].toString()); await prefs.setStringList('mr_otaku_read_notifications', _readNotifications.toList()); notifyListeners(); }
+  Future<bool> addNotification(String title, String body) async { if (!_isAdmin || title.trim().isEmpty) return false; try { await supabase.from('notifications').insert({'title': title.trim(), 'body': body.trim()}); await loadNotifications(); notifyListeners(); return true; } catch (e) { return false; } }
+
+  Future<void> loadPoll() async {
+    try {
+      final polls = await supabase.from('polls').select().eq('active', true).order('created_at', ascending: false);
+      if (polls.isEmpty) { activePoll = null; activePollOptions = []; pollVoteCounts.clear(); votedPollId = null; pollVoters = []; return; }
+      activePoll = Map<String, dynamic>.from(polls.first);
+      final pollId = activePoll!['id'];
+      final options = await supabase.from('poll_options').select().eq('poll_id', pollId).order('position', ascending: true);
+      activePollOptions = List<Map<String, dynamic>>.from(options);
+      final votes = await supabase.from('poll_votes').select('option_id, client_id, account_id, user_name').eq('poll_id', pollId);
+      pollVoteCounts.clear(); pollVoters = [];
+      final clientId = await getClientId(); votedPollId = null;
+      for (final vote in votes) { final optionId = vote['option_id']; pollVoteCounts[optionId] = (pollVoteCounts[optionId] ?? 0) + 1; if (clean(vote['client_id']) == clientId) votedPollId = pollId.toString(); pollVoters.add({'option_id': optionId, 'account_id': vote['account_id'], 'user_name': clean(vote['user_name'])}); }
+    } catch (e) {}
+  }
+  bool get hasVotedInActivePoll => activePoll != null && votedPollId == clean(activePoll!['id']);
+  int get totalPollVotes => pollVoteCounts.values.fold(0, (a, b) => a + b);
+  double getPollPercentage(dynamic optionId) => totalPollVotes == 0 ? 0 : (pollVoteCounts[optionId] ?? 0) / totalPollVotes * 100;
+  List<Map<String, dynamic>> votersForOption(dynamic optionId) => pollVoters.where((v) => v['option_id'] == optionId).toList();
+  Future<bool> votePoll(dynamic optionId) async { if (activePoll == null || hasVotedInActivePoll) return false; try { final clientId = await getClientId(); await supabase.from('poll_votes').insert({'poll_id': activePoll!['id'], 'option_id': optionId, 'client_id': clientId, 'account_id': currentAccountId, 'user_name': currentUserName}); votedPollId = clean(activePoll!['id']); pollVoteCounts[optionId] = (pollVoteCounts[optionId] ?? 0) + 1; pollVoters.add({'option_id': optionId, 'account_id': currentAccountId, 'user_name': currentUserName}); notifyListeners(); return true; } catch (e) { return false; } }
+  Future<bool> createPoll(String question, List<String> options) async { if (!_isAdmin || question.trim().isEmpty || options.length < 2) return false; try { await supabase.from('polls').update({'active': false}).eq('active', true); final poll = await supabase.from('polls').insert({'question': question.trim(), 'active': true}).select().single(); for (int i = 0; i < options.length; i++) { if (options[i].trim().isEmpty) continue; await supabase.from('poll_options').insert({'poll_id': poll['id'], 'option_text': options[i].trim(), 'position': i}); } await loadPoll(); return true; } catch (e) { return false; } }
+
+  Future<bool> addNews(String title, String description, {File? imageFile}) async { if (!_isAdmin || title.trim().isEmpty) return false; try { String? imageUrl; if (imageFile != null) { final ext = safeExtension(imageFile.path); final path = 'news_${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, imageFile); imageUrl = supabase.storage.from('news-images').getPublicUrl(path); } await supabase.from('news').insert({'title': title.trim(), 'description': description.trim(), 'image_url': imageUrl}); await loadData(); return true; } catch (e) { return false; } }
+  Future<bool> deleteNews(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('news').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; } }
+
+  Future<bool> addPlayer(String name, int points, {int? accountId}) async { if (!_isAdmin || name.trim().isEmpty) return false; try { if (accountId != null) { final exists = await supabase.from('players').select('id').eq('account_id', accountId).maybeSingle(); if (exists != null) return false; } await supabase.from('players').insert({'name': name.trim(), 'points': max(0, points), if (accountId != null) 'account_id': accountId}); await loadData(); return true; } catch (e) { return false; } }
+  Future<bool> updatePlayer(dynamic id, String name, int points, {int? accountId}) async { if (!_isAdmin || name.trim().isEmpty) return false; try { if (accountId != null) { final existing = await supabase.from('players').select('id').eq('account_id', accountId).maybeSingle(); if (existing != null && clean(existing['id']) != clean(id)) return false; } await supabase.from('players').update({'name': name.trim(), 'points': max(0, points), 'account_id': accountId}).eq('id', id); await loadData(); return true; } catch (e) { return false; } }
+  Future<bool> deletePlayer(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('players').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; } }
+
+  Future<bool> addLatest(String title, String description) async { if (!_isAdmin || title.trim().isEmpty) return false; try { await supabase.from('latest').insert({'title': title.trim(), 'description': description.trim()}); await loadData(); return true; } catch (e) { return false; } }
+  Future<bool> deleteLatest(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('latest').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; } }
+  Future<bool> sendMessage(String name, String message) async { if (message.trim().isEmpty) return false; try { await supabase.from('messages').insert({'name': currentUserName.trim().isNotEmpty ? currentUserName : name.trim().isEmpty ? 'مستخدم' : name.trim(), 'message': message.trim()}); return true; } catch (e) { return false; } }
+  Future<bool> deleteMessage(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('messages').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; } }
+
+  Future<bool> approvePurchase(Map<String, dynamic> request) async { if (!_isAdmin || request['status'] != 'pending') return false; try { final playerId = request['player_id']; final cost = parseInt(request['cost']); final player = await supabase.from('players').select().eq('id', playerId).maybeSingle(); if (player == null) return false; final points = parseInt(player['points']); if (points < cost) return false; await supabase.from('players').update({'points': points - cost}).eq('id', playerId); await supabase.from('purchase_requests').update({'status': 'approved'}).eq('id', request['id']); await loadData(); return true; } catch (e) { return false; } }
+  Future<bool> rejectPurchase(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('purchase_requests').update({'status': 'rejected'}).eq('id', id); await loadData(); return true; } catch (e) { return false; } }
 }
