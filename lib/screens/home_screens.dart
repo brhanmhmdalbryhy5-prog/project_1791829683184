@@ -7,12 +7,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/colors.dart';
 import '../core/helpers.dart';
+import '../core/theme_manager.dart'; // ✅ الثيمات
 import '../data/app_data.dart';
 import 'social_screens.dart';
 import 'admin_screens.dart';
 import 'games_screens.dart';
-import '../core/theme_manager.dart';
 
+// =======================================================
+// 1. الحاوية الرئيسية
+// =======================================================
 class HomePage extends StatefulWidget {
   final AppData data;
   const HomePage({super.key, required this.data});
@@ -66,18 +69,22 @@ class _HomePageState extends State<HomePage> {
         destinations: [
           const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
           NavigationDestination(
-            icon: Badge(isLabelVisible: widget.data.hasNewNews, backgroundColor: AppColors.gold, child: const Icon(Icons.newspaper_outlined)),
+            icon: Badge(isLabelVisible: widget.data.hasNewNews, backgroundColor: ThemeManager.instance.primaryColor, child: const Icon(Icons.newspaper_outlined)),
             selectedIcon: const Icon(Icons.newspaper),
             label: 'الأخبار',
           ),
-          const NavigationDestination(icon: Icon(Icons.post_add), selectedIcon: Icon(Icons.post_add, color: AppColors.gold), label: 'المنشورات'),
+          NavigationDestination(
+            icon: const Icon(Icons.post_add),
+            selectedIcon: Icon(Icons.post_add, color: ThemeManager.instance.primaryColor),
+            label: 'المنشورات',
+          ),
           NavigationDestination(
             icon: Badge(isLabelVisible: totalUnreadMessages > 0, backgroundColor: Colors.red, label: Text('$totalUnreadMessages'), child: const Icon(Icons.forum_outlined)),
             selectedIcon: const Icon(Icons.forum),
             label: 'الرسائل',
           ),
           NavigationDestination(
-            icon: Badge(isLabelVisible: widget.data.hasNewQuiz || widget.data.hasNewGallery, backgroundColor: AppColors.gold, child: const Icon(Icons.apps_outlined)),
+            icon: Badge(isLabelVisible: widget.data.hasNewQuiz || widget.data.hasNewGallery, backgroundColor: ThemeManager.instance.primaryColor, child: const Icon(Icons.apps_outlined)),
             selectedIcon: const Icon(Icons.apps),
             label: 'الخدمات',
           ),
@@ -88,6 +95,9 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+// =======================================================
+// 2. الرئيسية
+// =======================================================
 class HomeTab extends StatefulWidget {
   final AppData data;
   const HomeTab({super.key, required this.data});
@@ -211,6 +221,9 @@ class _HomeTabState extends State<HomeTab> {
   }
 }
 
+// =======================================================
+// البحث
+// =======================================================
 class CustomSearchDelegate extends SearchDelegate {
   final AppData data;
   CustomSearchDelegate(this.data);
@@ -258,7 +271,9 @@ class _MiniStat extends StatelessWidget {
   }
 }
 
-// ================= صفحة حسابي =================
+// =======================================================
+// 3. صفحة حسابي (مع زر الثيمات)
+// =======================================================
 class ProfilePage extends StatefulWidget {
   final AppData data;
   const ProfilePage({super.key, required this.data});
@@ -317,6 +332,7 @@ class _ProfilePageState extends State<ProfilePage> {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              // 1️⃣ البطاقة العلوية
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(18),
@@ -339,9 +355,22 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 12),
+              // 2️⃣ زر لوحة الإدارة
               if (widget.data.isAdmin)
                 ServiceTile(icon: Icons.admin_panel_settings, title: 'لوحة الإدارة', subtitle: 'إدارة التطبيق', colorIndex: 11, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPanelPage(data: widget.data)))),
+              // 3️⃣ 🎨 زر الثيمات (جديد)
+              ServiceTile(
+                icon: Icons.palette,
+                title: 'الثيمات',
+                subtitle: 'تغيير لون التطبيق',
+                colorIndex: 6,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ThemePickerPage()),
+                ),
+              ),
               const SizedBox(height: 16),
+              // 4️⃣ مربع النشر
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -359,6 +388,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 16),
+              // 5️⃣ منشوراتي
               const Text('منشوراتي', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.gold)),
               const SizedBox(height: 10),
               if (myPosts.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لم تقم بنشر أي شيء بعد.')))
@@ -371,7 +401,9 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-// ================= الخدمات (مع 5 أقسام جديدة) =================
+// =======================================================
+// 4. الخدمات (مع الجديدة)
+// =======================================================
 class ServicesPage extends StatelessWidget {
   final AppData data;
   const ServicesPage({super.key, required this.data});
@@ -383,15 +415,10 @@ class ServicesPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // === 🆕 إحصائياتي ===
           ServiceTile(icon: Icons.bar_chart, title: 'إحصائياتي', subtitle: 'شاهد نشاطك بالأرقام', colorIndex: 0, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MyStatsPage(data: data)))),
-          // === 🆕 شهادات الإنجاز ===
           ServiceTile(icon: Icons.workspace_premium, title: 'شهادات الإنجاز', subtitle: 'شهاداتك التي حصلت عليها', colorIndex: 6, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CertificatesPage(data: data)))),
-          // === 🆕 لوحة التقدم ===
           ServiceTile(icon: Icons.trending_up, title: 'لوحة التقدم', subtitle: 'تقدمك نحو الشارة القادمة', colorIndex: 2, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProgressPage(data: data)))),
-          // === 🆕 أصوات التطبيق ===
-          ServiceTile(icon: Icons.volume_up, title: 'أصوات التطبيق', subtitle: 'تشغيل أو إيقاف أصوات النقر', colorIndex: 5, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SoundsPage()))),
-          // === الموجودة ===
+          ServiceTile(icon: Icons.volume_up, title: 'أصوات التطبيق', subtitle: 'تشغيل أو إيقاف أصوات النقر', colorIndex: 5, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SoundsPage()))),
           ServiceTile(icon: Icons.emoji_events, title: 'خزانة الجوائز', subtitle: 'الجوائز المتاحة لك', colorIndex: 1, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RewardsPage(data: data)))),
           ServiceTile(icon: Icons.photo_library, title: 'معرض الصور', subtitle: 'شارك صورك المفضلة', badge: data.hasNewGallery, colorIndex: 3, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryPage(data: data))).then((_) => data.markGallerySeen())),
           ServiceTile(icon: Icons.quiz, title: 'لعبة الأسئلة', subtitle: 'ثلاثة أنواع من الأسئلة', badge: data.hasNewQuiz, colorIndex: 4, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => QuestionsHubPage(data: data)))),
@@ -422,7 +449,9 @@ class ServiceTile extends StatelessWidget {
   }
 }
 
-// ================= 🆕 صفحة إحصائياتي =================
+// =======================================================
+// 5. إحصائياتي
+// =======================================================
 class MyStatsPage extends StatelessWidget {
   final AppData data;
   const MyStatsPage({super.key, required this.data});
@@ -462,7 +491,9 @@ class MyStatsPage extends StatelessWidget {
   }
 }
 
-// ================= 🆕 صفحة شهادات الإنجاز =================
+// =======================================================
+// 6. شهادات الإنجاز
+// =======================================================
 class CertificatesPage extends StatelessWidget {
   final AppData data;
   const CertificatesPage({super.key, required this.data});
@@ -507,7 +538,9 @@ class CertificatesPage extends StatelessWidget {
   }
 }
 
-// ================= 🆕 لوحة التقدم =================
+// =======================================================
+// 7. لوحة التقدم
+// =======================================================
 class ProgressPage extends StatelessWidget {
   final AppData data;
   const ProgressPage({super.key, required this.data});
@@ -572,7 +605,6 @@ class ProgressPage extends StatelessWidget {
                 )
               else
                 const Card(child: Padding(padding: EdgeInsets.all(20), child: Center(child: Text('🏆 وصلت لأعلى شارة! أنت أسطورة!')))),
-
               const SizedBox(height: 16),
               const Text('الشارات القادمة:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.gold)),
               const SizedBox(height: 8),
@@ -591,7 +623,9 @@ class ProgressPage extends StatelessWidget {
   }
 }
 
-// ================= 🆕 صفحة أصوات التطبيق =================
+// =======================================================
+// 8. أصوات التطبيق
+// =======================================================
 class SoundsPage extends StatefulWidget {
   const SoundsPage({super.key});
   @override
@@ -602,10 +636,7 @@ class _SoundsPageState extends State<SoundsPage> {
   bool _soundEnabled = true;
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
+  void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -638,7 +669,9 @@ class _SoundsPageState extends State<SoundsPage> {
   }
 }
 
-// ================= صفحة الأخبار =================
+// =======================================================
+// 9. صفحة الأخبار
+// =======================================================
 class NewsPage extends StatelessWidget {
   final AppData data;
   const NewsPage({super.key, required this.data});
@@ -703,7 +736,9 @@ class NewsDetailsPage extends StatelessWidget {
   }
 }
 
-// ================= 🆕 صفحة تعليقات الأخبار (مع صور + ردود) =================
+// =======================================================
+// 10. تعليقات الأخبار (الرد + الصور)
+// =======================================================
 class CommentsPage extends StatefulWidget {
   final AppData data; final dynamic newsId;
   const CommentsPage({super.key, required this.data, required this.newsId});
@@ -804,6 +839,9 @@ class _CommentsPageState extends State<CommentsPage> {
   }
 }
 
+// =======================================================
+// 11. الإشعارات
+// =======================================================
 class NotificationsPage extends StatelessWidget {
   final AppData data;
   const NotificationsPage({super.key, required this.data});
