@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // ضروري للـ Realtime
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/colors.dart';
 import '../core/helpers.dart';
@@ -142,7 +142,7 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
   }
 }
 
-// ================= 2. الرسائل الخاصة (مع Realtime) =================
+// ================= 2. الرسائل الخاصة (مع إصلاح الوميض + Realtime) =================
 class PrivateMessagesPage extends StatelessWidget {
   final AppData data;
   const PrivateMessagesPage({super.key, required this.data});
@@ -188,7 +188,6 @@ class PrivateMessagesPage extends StatelessWidget {
   }
 }
 
-// 💬 شاشة المحادثة (تم تحويلها إلى Realtime)
 class ChatScreen extends StatefulWidget {
   final AppData data; final Map<String, dynamic> other;
   const ChatScreen({super.key, required this.data, required this.other});
@@ -200,64 +199,88 @@ class _ChatScreenState extends State<ChatScreen> {
   final ctrl = TextEditingController();
   final supabase = Supabase.instance.client;
   RealtimeChannel? _channel;
+  
+  // ✅ متغير حالة التحميل لمنع ظهور رسائل الشخص السابق
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _initChat();
+  }
+
+  Future<void> _initChat() async {
+    // 1️⃣ امسح رسائل الشخص السابق فوراً
+    widget.data.privateMessages.clear();
     
-    // 🌟 تفعيل التحديث الفوري (Realtime) بدلاً من Timer
-    _channel = supabase.channel('public:private_messages')
+    // 2️⃣ اجلب رسائل الشخص الجديد
+    await widget.data.loadPrivateMessages(parseInt(widget.other['account_id']));
+    
+    // 3️⃣ أخفي شاشة التحميل وأظهر الرسائل
+    if (mounted) setState(() => _loading = false);
+    
+    // 4️⃣ تفعيل التحديث الفوري (Realtime)
+    _channel = supabase.channel('chat_${widget.data.currentAccountId}_${widget.other['account_id']}')
       .onPostgresChanges(
         event: PostgresChangeEvent.insert,
         schema: 'public',
         table: 'private_messages',
         callback: (payload) {
           final newMsg = payload.newRecord;
-          if ((parseInt(newMsg['sender_id']) == widget.data.currentAccountId && parseInt(newMsg['receiver_id']) == parseInt(widget.other['account_id'])) ||
-              (parseInt(newMsg['sender_id']) == parseInt(widget.other['account_id']) && parseInt(newMsg['receiver_id']) == widget.data.currentAccountId)) {
-            _load(); // تحديث الرسائل فور وصول رسالة جديدة
+          final senderId = parseInt(newMsg['sender_id']);
+          final receiverId = parseInt(newMsg['receiver_id']);
+          final myId = widget.data.currentAccountId;
+          final otherId = parseInt(widget.other['account_id']);
+          
+          // تحديث فقط لو الرسالة تخص هذه المحادثة
+          if ((senderId == myId && receiverId == otherId) ||
+              (senderId == otherId && receiverId == myId)) {
+            widget.data.loadPrivateMessages(otherId);
           }
         }
       ).subscribe();
   }
 
-  Future<void> _load() async => await widget.data.loadPrivateMessages(parseInt(widget.other['account_id']));
-  
   Future<void> _send() async { 
     if (ctrl.text.trim().isEmpty) return; 
     final ok = await widget.data.sendPrivateMessage(parseInt(widget.other['account_id']), ctrl.text); 
-    if (ok) { ctrl.clear(); } 
+    if (ok) ctrl.clear(); 
   }
 
   @override
   void dispose() { 
-    _channel?.unsubscribe(); // إلغاء الاشتراك عند الخروج
+    _channel?.unsubscribe(); 
     ctrl.dispose(); 
     super.dispose(); 
   }
 
   @override
   Widget build(BuildContext context) {
-    final otherName = clean(widget.other['name']); final otherAvatar = clean(widget.other['avatar_url']);
+    final otherName = clean(widget.other['name']); 
+    final otherAvatar = clean(widget.other['avatar_url']);
+    
     return Scaffold(
       appBar: AppBar(title: Row(children: [
         GestureDetector(onTap: () => showAvatarDialog(context, otherAvatar, otherName), child: CircleAvatar(radius: 16, backgroundImage: otherAvatar.isNotEmpty ? CachedNetworkImageProvider(otherAvatar) : null, child: otherAvatar.isEmpty ? const Icon(Icons.person, size: 16) : null)),
         const SizedBox(width: 8), Text(otherName),
       ])),
-      body: Column(children: [
-        Expanded(child: AnimatedBuilder(animation: widget.data, builder: (context, _) {
-          final msgs = widget.data.privateMessages;
-          return ListView.builder(reverse: true, padding: const EdgeInsets.all(10), itemCount: msgs.length, itemBuilder: (_, i) {
-            final m = msgs[i]; final isMe = parseInt(m['sender_id']) == widget.data.currentAccountId;
-            return Align(alignment: isMe ? Alignment.centerRight : Alignment.centerLeft, child: Card(color: isMe ? AppColors.gold.withOpacity(0.2) : AppColors.cardBlack, child: Padding(padding: const EdgeInsets.all(10), child: Text(clean(m['message'])))));
-          });
-        })),
-        Padding(padding: const EdgeInsets.all(8), child: Row(children: [
-          Expanded(child: TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'اكتب رسالة...'))),
-          IconButton(onPressed: _send, icon: const Icon(Icons.send)),
-        ])),
-      ]),
+      body: _loading
+          // ✅ شاشة تحميل تمنع ظهور الرسائل القديمة
+          ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+          : Column(children: [
+              Expanded(child: AnimatedBuilder(animation: widget.data, builder: (context, _) {
+                final msgs = widget.data.privateMessages;
+                return ListView.builder(reverse: true, padding: const EdgeInsets.all(10), itemCount: msgs.length, itemBuilder: (_, i) {
+                  final m = msgs[i]; 
+                  final isMe = parseInt(m['sender_id']) == widget.data.currentAccountId;
+                  return Align(alignment: isMe ? Alignment.centerRight : Alignment.centerLeft, child: Card(color: isMe ? AppColors.gold.withOpacity(0.2) : AppColors.cardBlack, child: Padding(padding: const EdgeInsets.all(10), child: Text(clean(m['message'])))));
+                });
+              })),
+              Padding(padding: const EdgeInsets.all(8), child: Row(children: [
+                Expanded(child: TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'اكتب رسالة...'))),
+                IconButton(onPressed: _send, icon: const Icon(Icons.send)),
+              ])),
+            ]),
     );
   }
 }
@@ -307,7 +330,7 @@ class _GalleryPageState extends State<GalleryPage> {
                     padding: const EdgeInsets.all(16), itemCount: widget.data.gallery.length,
                     itemBuilder: (_, index) {
                       final item = widget.data.gallery[index];
-                      final tag = 'gallery_${item['id']}'; // 🌟 مفتاح التكبير الانسيابي
+                      final tag = 'gallery_${item['id']}';
 
                       return GestureDetector(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(data: widget.data, item: item))),
@@ -317,7 +340,6 @@ class _GalleryPageState extends State<GalleryPage> {
                           child: Column(children: [
                             AspectRatio(
                               aspectRatio: 1.15, 
-                              // 🌟 استخدام Hero للتكبير الانسيابي
                               child: Hero(
                                 tag: tag,
                                 child: CachedNetworkImage(imageUrl: clean(item['image_url']), fit: BoxFit.cover, errorWidget: (_, __, ___) => const Icon(Icons.broken_image, color: AppColors.gold))
@@ -346,7 +368,7 @@ class GalleryImagePage extends StatelessWidget {
   const GalleryImagePage({super.key, required this.data, required this.item});
   @override
   Widget build(BuildContext context) {
-    final tag = 'gallery_${item['id']}'; // 🌟 نفس المفتاح لربط الحركة
+    final tag = 'gallery_${item['id']}';
 
     return Scaffold(
       backgroundColor: AppColors.black,
@@ -355,7 +377,6 @@ class GalleryImagePage extends StatelessWidget {
       ]),
       body: Center(
         child: InteractiveViewer(
-          // 🌟 استخدام Hero للصورة المكبرة
           child: Hero(
             tag: tag,
             child: CachedNetworkImage(imageUrl: clean(item['image_url']), fit: BoxFit.contain, errorWidget: (_, __, ___) => const Icon(Icons.broken_image, size: 80, color: AppColors.gold))
