@@ -99,11 +99,20 @@ class AppData extends ChangeNotifier {
     for (final p in players) { if (parseInt(p['account_id']) == id) return clean(p['avatar_url']); }
     return '';
   }
+
   String avatarForName(String name) {
     final n = name.trim().toLowerCase();
     if (n.isEmpty) return '';
     for (final p in players) { if (clean(p['name']).trim().toLowerCase() == n) return clean(p['avatar_url']); }
     return '';
+  }
+
+  // ✅ دالة التحقق من صلاحية المدير للاعب معين
+  bool isPlayerAdmin(dynamic accountId) {
+    for (final p in players) {
+      if (parseInt(p['account_id']) == parseInt(accountId)) return p['is_admin'] == true;
+    }
+    return false;
   }
 
   Future<void> setAdminSession(bool value) async { _isAdmin = value; notifyListeners(); }
@@ -114,9 +123,7 @@ class AppData extends ChangeNotifier {
 
   Future<void> updateLastSeen() async {
     if (currentAccountId == null) return;
-    try {
-      await supabase.from('players').update({'last_seen': DateTime.now().toUtc().toIso8601String()}).eq('account_id', currentAccountId!);
-    } catch (e) { debugPrint('Update last seen error: $e'); }
+    try { await supabase.from('players').update({'last_seen': DateTime.now().toUtc().toIso8601String()}).eq('account_id', currentAccountId!); } catch (e) { debugPrint('Update last seen error: $e'); }
   }
 
   Future<void> loadLocalAccount() async {
@@ -138,8 +145,7 @@ class AppData extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('mr_otaku_account_id', accountId.toString());
       await prefs.setString('mr_otaku_user_name', savedName);
-      currentAccountId = accountId; currentUserName = savedName;
-      notifyListeners(); return true;
+      currentAccountId = accountId; currentUserName = savedName; notifyListeners(); return true;
     } catch (e) { return false; }
   }
 
@@ -200,9 +206,15 @@ class AppData extends ChangeNotifier {
     try { final result = await supabase.from('post_comments').select().eq('post_id', postId).order('created_at', ascending: true); return List<Map<String, dynamic>>.from(result); } catch (e) { return []; }
   }
 
-  Future<bool> addPostComment(dynamic postId, String text) async {
+  // ✅ إضافة replyTo لتعليقات المنشورات
+  Future<bool> addPostComment(dynamic postId, String text, {String? replyTo}) async {
     if (text.trim().isEmpty || currentAccountId == null) return false;
-    try { await supabase.from('post_comments').insert({'post_id': postId, 'account_id': currentAccountId, 'user_name': currentUserName, 'comment_text': text.trim()}); postCommentCounts[postId] = (postCommentCounts[postId] ?? 0) + 1; notifyListeners(); return true; } catch (e) { return false; }
+    try {
+      await supabase.from('post_comments').insert({
+        'post_id': postId, 'account_id': currentAccountId, 'user_name': currentUserName, 'comment_text': text.trim(), 'reply_to': replyTo,
+      });
+      postCommentCounts[postId] = (postCommentCounts[postId] ?? 0) + 1; notifyListeners(); return true;
+    } catch (e) { return false; }
   }
 
   Future<bool> addPost(String content, File? imageFile) async {
@@ -274,7 +286,18 @@ class AppData extends ChangeNotifier {
   Future<bool> toggleLike(dynamic newsId) async { try { final clientId = await getClientId(); final key = newsId.toString(); if (likedNews.contains(key)) { await supabase.from('news_likes').delete().eq('news_id', newsId).eq('client_id', clientId); likedNews.remove(key); likeCounts[newsId] = max(0, (likeCounts[newsId] ?? 1) - 1); } else { await supabase.from('news_likes').insert({'news_id': newsId, 'client_id': clientId}); likedNews.add(key); likeCounts[newsId] = (likeCounts[newsId] ?? 0) + 1; } notifyListeners(); return true; } catch (e) { return false; } }
   Future<void> loadCommentCounts() async { try { final result = await supabase.from('news_comments').select('news_id'); commentCounts.clear(); for (final item in result) { final id = item['news_id']; commentCounts[id] = (commentCounts[id] ?? 0) + 1; } } catch (e) {} }
   Future<List<Map<String, dynamic>>> getComments(dynamic newsId) async { try { final result = await supabase.from('news_comments').select().eq('news_id', newsId).order('created_at', ascending: false); return List<Map<String, dynamic>>.from(result); } catch (e) { return []; } }
-  Future<bool> addComment(dynamic newsId, String userName, String text) async { if (text.trim().isEmpty) return false; try { final clientId = await getClientId(); await supabase.from('news_comments').insert({'news_id': newsId, 'client_id': clientId, 'user_name': userName, 'comment_text': text.trim()}); commentCounts[newsId] = (commentCounts[newsId] ?? 0) + 1; notifyListeners(); return true; } catch (e) { return false; } }
+
+  // ✅ إضافة replyTo لتعليقات الأخبار
+  Future<bool> addComment(dynamic newsId, String userName, String text, {String? replyTo}) async {
+    if (text.trim().isEmpty) return false;
+    try {
+      final clientId = await getClientId();
+      await supabase.from('news_comments').insert({
+        'news_id': newsId, 'client_id': clientId, 'user_name': userName, 'comment_text': text.trim(), 'reply_to': replyTo,
+      });
+      commentCounts[newsId] = (commentCounts[newsId] ?? 0) + 1; notifyListeners(); return true;
+    } catch (e) { return false; }
+  }
 
   Future<String> getClientId() async { final prefs = await SharedPreferences.getInstance(); String? id = prefs.getString('mr_otaku_client_id'); if (id == null || id.isEmpty) { id = DateTime.now().microsecondsSinceEpoch.toString(); await prefs.setString('mr_otaku_client_id', id); } return id; }
 
