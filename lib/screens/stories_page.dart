@@ -8,7 +8,7 @@ import '../core/helpers.dart';
 import '../core/theme_manager.dart';
 import '../data/app_data.dart';
 
-// ================= شريط الستوري (يُستخدم في HomeTab) =================
+// ================= شريط الستوري =================
 class StoriesBar extends StatefulWidget {
   final AppData data;
   const StoriesBar({super.key, required this.data});
@@ -32,7 +32,6 @@ class _StoriesBarState extends State<StoriesBar> {
       animation: widget.data,
       builder: (context, _) {
         final stories = widget.data.activeStories;
-        // تخزين قصير: صاحب الستوري → آخر ستوري
         final Map<int, Map<String, dynamic>> latestByAccount = {};
         for (final s in stories) {
           final id = parseInt(s['account_id']);
@@ -45,7 +44,7 @@ class _StoriesBarState extends State<StoriesBar> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             children: [
-              // 🔵 زر إضافة ستوري
+              // زر إضافة ستوري
               GestureDetector(
                 onTap: _addStory,
                 child: Padding(
@@ -53,7 +52,8 @@ class _StoriesBarState extends State<StoriesBar> {
                   child: Column(
                     children: [
                       Container(
-                        width: 66, height: 66,
+                        width: 66,
+                        height: 66,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: ThemeManager.instance.getButtonGradient(),
@@ -69,7 +69,8 @@ class _StoriesBarState extends State<StoriesBar> {
                                   : const Icon(Icons.person, color: Colors.white, size: 30),
                             ),
                             Positioned(
-                              bottom: 0, right: 0,
+                              bottom: 0,
+                              right: 0,
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: ThemeManager.instance.primaryColor,
@@ -84,16 +85,19 @@ class _StoriesBarState extends State<StoriesBar> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const SizedBox(width: 70, child: Text('ستوري', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold))),
+                      const SizedBox(
+                        width: 70,
+                        child: Text('ستوري', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
                     ],
                   ),
                 ),
               ),
 
-              // 🌟 ستوري المستخدمين
+              // ستوري المستخدمين
               ...latestByAccount.entries.map((entry) {
                 final s = entry.value;
-                final name = clean(s['user_name']);
+                final name = widget.data.displayNameForAccount(entry.key);
                 final avatar = widget.data.avatarForAccount(entry.key);
                 final hasUnviewed = !widget.data.hasViewedStory(s['id']);
                 return GestureDetector(
@@ -104,16 +108,18 @@ class _StoriesBarState extends State<StoriesBar> {
                     padding: const EdgeInsets.only(right: 8),
                     child: Column(
                       children: [
+                        // ✅ التصحيح: padding خارج BoxDecoration
                         Container(
-                          width: 66, height: 66,
+                          width: 66,
+                          height: 66,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: hasUnviewed
                                 ? LinearGradient(colors: [ThemeManager.instance.primaryColor, AppColors.getColor(2), AppColors.getColor(4)])
                                 : null,
                             color: hasUnviewed ? null : Colors.grey.shade600,
-                            padding: const EdgeInsets.all(3),
                           ),
+                          padding: const EdgeInsets.all(3),
                           child: CircleAvatar(
                             radius: 30,
                             backgroundColor: AppColors.cardBlack,
@@ -122,7 +128,10 @@ class _StoriesBarState extends State<StoriesBar> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        SizedBox(width: 70, child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10))),
+                        SizedBox(
+                          width: 70,
+                          child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10)),
+                        ),
                       ],
                     ),
                   ),
@@ -165,7 +174,10 @@ class _StoryViewerPageState extends State<StoryViewerPage> with SingleTickerProv
   }
 
   void _next() {
-    if (_current + 1 >= widget.data.activeStories.length) { Navigator.pop(context); return; }
+    if (_current + 1 >= widget.data.activeStories.length) {
+      Navigator.pop(context);
+      return;
+    }
     setState(() => _current++);
     _pageController.animateToPage(_current, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     _progressController.reset();
@@ -182,13 +194,19 @@ class _StoryViewerPageState extends State<StoryViewerPage> with SingleTickerProv
   }
 
   @override
-  void dispose() { _progressController.dispose(); _pageController.dispose(); super.dispose(); }
+  void dispose() {
+    _progressController.dispose();
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.data.activeStories.isEmpty) return const Scaffold(body: Center(child: Text('لا توجد ستوري')));
+    if (widget.data.activeStories.isEmpty) {
+      return const Scaffold(body: Center(child: Text('لا توجد ستوري')));
+    }
     final story = widget.data.activeStories[_current];
-    final name = clean(story['user_name']);
+    final name = widget.data.displayNameForAccount(story['account_id']);
     final avatar = widget.data.avatarForAccount(story['account_id']);
 
     return Scaffold(
@@ -199,30 +217,60 @@ class _StoryViewerPageState extends State<StoryViewerPage> with SingleTickerProv
             onTapUp: (d) {
               final x = d.localPosition.dx;
               final w = MediaQuery.of(context).size.width;
-              if (x < w / 2) _previous(); else _next();
+              if (x < w / 2) {
+                _previous();
+              } else {
+                _next();
+              }
             },
             child: PageView.builder(
               controller: _pageController,
               itemCount: widget.data.activeStories.length,
-              onPageChanged: (i) { setState(() => _current = i); _progressController.reset(); _progressController.forward(); },
+              onPageChanged: (i) {
+                setState(() => _current = i);
+                _progressController.reset();
+                _progressController.forward();
+              },
               itemBuilder: (_, i) {
                 final s = widget.data.activeStories[i];
-                return CachedNetworkImage(imageUrl: clean(s['image_url']), fit: BoxFit.contain, errorWidget: (_, __, ___) => const Center(child: Icon(Icons.broken_image, size: 80, color: Colors.white)));
+                return CachedNetworkImage(
+                  imageUrl: clean(s['image_url']),
+                  fit: BoxFit.contain,
+                  errorWidget: (_, __, ___) => const Center(child: Icon(Icons.broken_image, size: 80, color: Colors.white)),
+                );
               },
             ),
           ),
-          // شريط التقدم
-          Positioned(top: 40, left: 8, right: 8, child: AnimatedBuilder(
-            animation: _progressController,
-            builder: (_, __) => LinearProgressIndicator(value: _progressController.value, backgroundColor: Colors.white24, valueColor: const AlwaysStoppedAnimation(Colors.white)),
-          )),
-          // معلومات المستخدم
-          Positioned(top: 55, left: 12, right: 12, child: Row(children: [
-            CircleAvatar(radius: 18, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, size: 18) : null),
-            const SizedBox(width: 8),
-            Expanded(child: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-            IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white)),
-          ])),
+          Positioned(
+            top: 40,
+            left: 8,
+            right: 8,
+            child: AnimatedBuilder(
+              animation: _progressController,
+              builder: (_, __) => LinearProgressIndicator(
+                value: _progressController.value,
+                backgroundColor: Colors.white24,
+                valueColor: const AlwaysStoppedAnimation(Colors.white),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 55,
+            left: 12,
+            right: 12,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null,
+                  child: avatar.isEmpty ? const Icon(Icons.person, size: 18) : null,
+                ),
+                const SizedBox(width: 8),
+                Expanded(child: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white)),
+              ],
+            ),
+          ),
         ],
       ),
     );
