@@ -41,15 +41,16 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ تم إرجاع صفحة الأخبار (NewsPage) هنا
     final pages = [
       HomeTab(data: widget.data),
-      PostsPage(data: widget.data),
+      NewsPage(data: widget.data),     // 👈 صفحة الأخبار
+      PostsPage(data: widget.data),    // 👈 صفحة المنشورات
       PrivateMessagesPage(data: widget.data),
       ServicesPage(data: widget.data),
       ProfilePage(data: widget.data),
     ];
 
-    // حساب مجموع الرسائل غير المقروءة
     final totalUnreadMessages = widget.data.unreadMessageCounts.values.fold<int>(0, (a, b) => a + b);
 
     return Scaffold(
@@ -63,6 +64,11 @@ class _HomePageState extends State<HomePage> {
         },
         destinations: [
           const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
+          NavigationDestination(
+            icon: Badge(isLabelVisible: widget.data.hasNewNews, backgroundColor: AppColors.gold, child: const Icon(Icons.newspaper_outlined)),
+            selectedIcon: const Icon(Icons.newspaper),
+            label: 'الأخبار',
+          ),
           const NavigationDestination(icon: Icon(Icons.post_add), selectedIcon: Icon(Icons.post_add, color: AppColors.gold), label: 'المنشورات'),
           NavigationDestination(
             icon: Badge(
@@ -86,7 +92,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ================= 1. الرئيسية (مع شريط الأخبار المتحرك) =================
+// ================= 1. الرئيسية (مع البحث) =================
 class HomeTab extends StatefulWidget {
   final AppData data;
   const HomeTab({super.key, required this.data});
@@ -118,6 +124,11 @@ class _HomeTabState extends State<HomeTab> {
       appBar: AppBar(
         title: const Text('مستر أوتاكو', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.gold)),
         actions: [
+          // 🔍 أيقونة البحث الاحترافية
+          IconButton(
+            onPressed: () => showSearch(context: context, delegate: CustomSearchDelegate(widget.data)),
+            icon: const Icon(Icons.search, color: AppColors.gold),
+          ),
           IconButton(
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(data: widget.data))),
             icon: Badge(isLabelVisible: widget.data.unreadNotificationCount > 0, backgroundColor: AppColors.gold, label: Text(widget.data.unreadNotificationCount.toString(), style: const TextStyle(color: Colors.black)), child: const Icon(Icons.notifications)),
@@ -212,6 +223,52 @@ class _HomeTabState extends State<HomeTab> {
   }
 }
 
+// 🔍 كلاس البحث الاحترافي
+class CustomSearchDelegate extends SearchDelegate {
+  final AppData data;
+  CustomSearchDelegate(this.data);
+
+  @override
+  ThemeData appBarTheme(BuildContext context) => Theme.of(context).copyWith(
+    appBarTheme: const AppBarTheme(backgroundColor: AppColors.black, iconTheme: IconThemeData(color: AppColors.gold)),
+    inputDecorationTheme: const InputDecorationTheme(border: InputBorder.none, hintStyle: TextStyle(color: Colors.grey)),
+  );
+
+  @override
+  List<Widget>? buildActions(BuildContext context) => [IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')];
+
+  @override
+  Widget? buildLeading(BuildContext context) => IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, null));
+
+  @override
+  Widget buildResults(BuildContext context) => _buildSearchResults();
+  @override
+  Widget buildSuggestions(BuildContext context) => _buildSearchResults();
+
+  Widget _buildSearchResults() {
+    final players = data.players.where((p) => clean(p['name']).contains(query)).toList();
+    final posts = data.posts.where((p) => clean(p['content']).contains(query)).toList();
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        if (players.isNotEmpty) ...[
+          const Text('المستخدمون:', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 18)),
+          ...players.map((p) => ListTile(
+            leading: CircleAvatar(backgroundImage: clean(p['avatar_url']).isNotEmpty ? CachedNetworkImageProvider(clean(p['avatar_url'])) : null, child: clean(p['avatar_url']).isEmpty ? const Icon(Icons.person) : null),
+            title: Text(clean(p['name'])),
+          )),
+        ],
+        if (posts.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('المنشورات:', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold, fontSize: 18)),
+          ...posts.map((p) => Card(child: ListTile(title: Text(clean(p['content']), maxLines: 2, overflow: TextOverflow.ellipsis)))),
+        ]
+      ],
+    );
+  }
+}
+
 class _MiniStat extends StatelessWidget {
   final String title; final String value;
   const _MiniStat({required this.title, required this.value});
@@ -224,7 +281,7 @@ class _MiniStat extends StatelessWidget {
   }
 }
 
-// ================= 2. صفحة حسابي (فيها زر النشر) =================
+// ================= 2. صفحة حسابي =================
 class ProfilePage extends StatefulWidget {
   final AppData data;
   const ProfilePage({super.key, required this.data});
