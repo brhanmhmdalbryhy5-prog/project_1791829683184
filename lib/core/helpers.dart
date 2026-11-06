@@ -2,15 +2,28 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'colors.dart';
+
+final AudioPlayer _clickPlayer = AudioPlayer();
 
 Future<void> playClickSound() async {
   try {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('mr_otaku_sound_enabled') ?? true) {
-      await HapticFeedback.lightImpact();
+      await _clickPlayer.stop();
+      await _clickPlayer.setVolume(1.0);
+      await _clickPlayer.play(AssetSource('sounds/click.mp3'));
     }
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('Sound error: $e');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('mr_otaku_sound_enabled') ?? true) {
+        await HapticFeedback.lightImpact();
+      }
+    } catch (_) {}
+  }
 }
 
 int parseInt(dynamic value) => int.tryParse(value?.toString() ?? '') ?? 0;
@@ -37,7 +50,7 @@ String quizTypeName(String type) {
 
 String safeExtension(String path) {
   final raw = path.split('.').last.toLowerCase();
-  const allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'bmp'];
+  const allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'bmp', 'mp4', 'mov', 'webm'];
   if (raw.length <= 5 && allowed.contains(raw)) return raw;
   return 'jpg';
 }
