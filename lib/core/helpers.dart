@@ -1,10 +1,17 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'colors.dart';
 
+// ✅ احترام إعدادات صوت التطبيق
 Future<void> playClickSound() async {
-  try { await SystemSound.play(SystemSoundType.click); } catch (_) {}
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('mr_otaku_sound_enabled') ?? true) {
+      await SystemSound.play(SystemSoundType.click);
+    }
+  } catch (_) {}
 }
 
 int parseInt(dynamic value) => int.tryParse(value?.toString() ?? '') ?? 0;
@@ -36,7 +43,6 @@ String safeExtension(String path) {
   return 'jpg';
 }
 
-// ✅ دالة "منذ ساعة / منذ يوم" مثل تيك توك ويوتيوب
 String timeAgo(String dateStr) {
   if (dateStr.isEmpty) return '';
   try {
@@ -115,6 +121,11 @@ BadgeInfo? getCurrentBadge(int points) {
   return current;
 }
 
+BadgeInfo? getNextBadge(int points) {
+  for (final badge in otakuBadges) { if (points < badge.points) return badge; }
+  return null;
+}
+
 class RewardInfo {
   final String name; final String icon; final int requiredPoints;
   const RewardInfo({required this.name, required this.icon, required this.requiredPoints});
@@ -133,4 +144,25 @@ void showSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: AppColors.cardBlack),
   );
+}
+
+// ✅ الشهادات (محسوبة من البيانات المتاحة)
+class Certificate {
+  final String title; final String icon; final bool unlocked; final String description;
+  const Certificate({required this.title, required this.icon, required this.unlocked, required this.description});
+}
+
+List<Certificate> buildCertificates({required int postsCount, required int receivedLikes, required int points, required String level}) {
+  return [
+    Certificate(title: 'البداية', icon: '🌱', unlocked: points >= 5, description: 'وصلت إلى 5 نقاط'),
+    Certificate(title: 'منشئ المحتوى', icon: '✍️', unlocked: postsCount >= 1, description: 'نشرت أول منشور'),
+    Certificate(title: 'كاتب نشيط', icon: '📚', unlocked: postsCount >= 5, description: 'نشرت 5 منشورات'),
+    Certificate(title: 'كاتب محترف', icon: '🖋️', unlocked: postsCount >= 10, description: 'نشرت 10 منشورات'),
+    Certificate(title: 'محبوب', icon: '❤️', unlocked: receivedLikes >= 10, description: 'حصلت على 10 إعجابات'),
+    Certificate(title: 'نجم الأوتاكو', icon: '⭐', unlocked: receivedLikes >= 50, description: 'حصلت على 50 إعجاب'),
+    Certificate(title: 'مئة نقطة', icon: '💯', unlocked: points >= 100, description: 'وصلت إلى 100 نقطة'),
+    Certificate(title: 'خمسمئة نقطة', icon: '🔥', unlocked: points >= 500, description: 'وصلت إلى 500 نقطة'),
+    Certificate(title: 'أوتاكو متقدم', icon: '🥈', unlocked: level == 'A' || level == 'S' || level == 'SS', description: 'وصلت للمستوى A'),
+    Certificate(title: 'أسطورة', icon: '🏆', unlocked: level == 'SS', description: 'وصلت للمستوى SS'),
+  ];
 }
