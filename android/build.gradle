@@ -10,7 +10,7 @@ buildscript {
     }
 }
 
-// ✅ الحل: تعريف خصائص flutter يدوياً لتعمل مع gal
+// ✅ تعريف خصائص flutter يدوياً لتعمل مع gal
 ext.flutter = [
     compileSdkVersion: 34,
     minSdkVersion    : 21,
@@ -31,9 +31,8 @@ subprojects {
 }
 
 subprojects {
-    project.evaluationDependsOn(':app')
-    
-    // إجبار المكتبات على استخدام compileSdk و namespace
+    // ✅ إجبار المكتبات على compileSdk 34 + namespace
+    // (بدون evaluationDependsOn الذي يسبب التعارض)
     afterEvaluate { project ->
         if (project.hasProperty('android')) {
             project.android {
