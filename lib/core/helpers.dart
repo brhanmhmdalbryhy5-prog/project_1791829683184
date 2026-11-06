@@ -2,10 +2,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
-import 'dart:io';
 import 'colors.dart';
 
 Future<void> playClickSound() async {
@@ -17,16 +15,31 @@ Future<void> playClickSound() async {
   } catch (_) {}
 }
 
-// ✅ دالة تنزيل الصورة إلى معرض الهاتف
+/// تنزيل الصورة إلى معرض الهاتف (باستخدام gal الحديثة)
 Future<bool> downloadImageToGallery(String imageUrl, {String fileName = 'mr_otaku_image'}) async {
   try {
+    // 1) تنزيل البايتات
     final response = await http.get(Uri.parse(imageUrl));
-    if (response.statusCode != 200) return false;
-    final result = await ImageGallerySaver.saveImage(
+    if (response.statusCode != 200) {
+      debugPrint('Download failed: ${response.statusCode}');
+      return false;
+    }
+
+    // 2) طلب صلاحية الوصول للمعرض
+    if (!await Gal.hasAccess()) {
+      final granted = await Gal.requestAccess();
+      if (!granted) {
+        debugPrint('Gal permission denied');
+        return false;
+      }
+    }
+
+    // 3) حفظ الصورة
+    await Gal.putImageBytes(
       response.bodyBytes,
       name: '${fileName}_${DateTime.now().millisecondsSinceEpoch}',
     );
-    return result != null;
+    return true;
   } catch (e) {
     debugPrint('Download error: $e');
     return false;
