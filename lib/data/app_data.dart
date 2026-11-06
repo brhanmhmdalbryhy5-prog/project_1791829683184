@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -36,6 +35,7 @@ class AppData extends ChangeNotifier {
   List<Map<String, dynamic>> userRewards = [];
   List<Map<String, dynamic>> savedPosts = [];
   List<Map<String, dynamic>> complaints = [];
+  List<Map<String, dynamic>> stories = [];
 
   final Map<dynamic, int> postLikeCounts = {};
   final Set<String> likedPosts = {};
@@ -51,6 +51,8 @@ class AppData extends ChangeNotifier {
   final Set<int> followingIds = {};
   int myFollowersCount = 0;
   int myFollowingCount = 0;
+
+  final Set<String> _viewedStoryIds = {};
 
   Map<String, dynamic>? activePoll;
   List<Map<String, dynamic>> activePollOptions = [];
@@ -84,6 +86,18 @@ class AppData extends ChangeNotifier {
     return importantNewsUpdatedAt != lastSeen;
   }
 
+  // ✅ الستوري النشط (لم ينته وقتها)
+  List<Map<String, dynamic>> get activeStories {
+    final now = DateTime.now().toUtc();
+    return stories.where((s) {
+      final exp = clean(s['expires_at']);
+      if (exp.isEmpty) return true;
+      try { return DateTime.parse(exp).isAfter(now); } catch (_) { return true; }
+    }).toList();
+  }
+
+  bool hasViewedStory(dynamic storyId) => _viewedStoryIds.contains(storyId.toString());
+
   Map<String, dynamic>? get currentPlayer {
     if (currentAccountId == null) return null;
     for (final player in players) { if (parseInt(player['account_id']) == currentAccountId) return player; }
@@ -95,7 +109,6 @@ class AppData extends ChangeNotifier {
   BadgeInfo? get currentBadge => getCurrentBadge(currentPoints);
   BadgeInfo? get nextBadge => getNextBadge(currentPoints);
 
-  // ✅ اسم القناة (ما يراه الجميع)
   String get currentDisplayName {
     final player = currentPlayer;
     if (player == null) return currentUserName;
@@ -103,7 +116,6 @@ class AppData extends ChangeNotifier {
     return channel.isNotEmpty ? channel : currentUserName;
   }
 
-  // ✅ اسم أي حساب (channel_name أو name)
   String displayNameForAccount(dynamic accountId) {
     if (accountId == null) return '';
     final id = parseInt(accountId);
@@ -166,9 +178,11 @@ class AppData extends ChangeNotifier {
     _lastSeenNewsId = LocalCache.loadString('last_seen_news_id') ?? '';
     _lastSeenQuizCount = LocalCache.loadInt('last_seen_quiz_count') ?? 0;
     _lastSeenGalleryCount = LocalCache.loadInt('last_seen_gallery_count') ?? 0;
+    // استرجاع الستوري المشاهدة محلياً
+    final viewedList = prefs.getStringList('mr_otaku_viewed_stories');
+    if (viewedList != null) _viewedStoryIds.addAll(viewedList);
   }
 
-  // ✅ الدخول يستخدم `name` (اسم المدير) فقط
   Future<bool> loginAccount(String name, int accountId) async {
     if (name.trim().isEmpty || accountId <= 0) return false;
     try {
@@ -189,7 +203,6 @@ class AppData extends ChangeNotifier {
     currentAccountId = null; currentUserName = ''; notifyListeners();
   }
 
-  // ✅ تغيير اسم القناة (لا يمس اسم المدير)
   Future<bool> changeMyName(String newName) async {
     if (currentAccountId == null || newName.trim().isEmpty) return false;
     try {
@@ -214,7 +227,7 @@ class AppData extends ChangeNotifier {
       await loadPoll(); await loadQuizQuestions(); await loadImportantNews();
       await loadGallery(); await loadPosts(); await loadUserRewards();
       await loadUnreadMessagesCount(); await loadSavedPosts();
-      await loadFollowStats(); await loadCommentLikes();
+      await loadFollowStats(); await loadCommentLikes(); await loadStories();
       if (_isAdmin) {
         final msgData = await supabase.from('messages').select().order('created_at', ascending: false); messages = List<Map<String, dynamic>>.from(msgData);
         final reqData = await supabase.from('purchase_requests').select().order('created_at', ascending: false); purchaseRequests = List<Map<String, dynamic>>.from(reqData);
@@ -332,6 +345,61 @@ class AppData extends ChangeNotifier {
     try { final post = posts.firstWhere((p) => p['id'] == id, orElse: () => {}); if (parseInt(post['account_id']) != currentAccountId && !_isAdmin) return false; await supabase.from('posts').delete().eq('id', id); await loadPosts(); return true; } catch (e) { return false; }
   }
 
+  // ================= STORIES =================
+  Future<void> loadStories() async {
+    try {
+      final result = await supabase.from('stories').select().order('created_at', ascending: false);
+      stories = List<Map<String, dynamic>>.from(result);
+      notifyListeners();
+    } catch (e) { debugPrint('Load stories error: $e'); }
+  }
+
+  Future<bool> addStory(File imageFile) async {
+    if (currentAccountId == null) return false;
+    try {
+      final ext = safeExtension(imageFile.path);
+      final path = 'stories/${currentAccountId}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await supabase.storage.from('news-images').upload(path, imageFile);
+      final url = supabase.storage.from('news-images').getPublicUrl(path);
+      final expires = DateTime.now().toUtc().add(const Duration(hours: 24)).toIso8601String();
+      await supabase.from('stories').insert({
+        'account_id': currentAccountId,
+        'user_name': currentDisplayName,
+        'image_url': url,
+        'expires_at': expires,
+      });
+      await loadStories();
+      return true;
+    } catch (e) { debugPrint('Add story error: $e'); return false; }
+  }
+
+  Future<void> markStoryViewed(dynamic storyId) async {
+    _viewedStoryIds.add(storyId.toString());
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('mr_otaku_viewed_stories', _viewedStoryIds.toList());
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  // ================= FOLLOWERS =================
+  Future<List<Map<String, dynamic>>> getFollowers(int accountId) async {
+    try {
+      final result = await supabase.from('follows').select('follower_id').eq('following_id', accountId);
+      final ids = result.map((e) => parseInt(e['follower_id'])).toList();
+      return players.where((p) => ids.contains(parseInt(p['account_id']))).toList();
+    } catch (e) { return []; }
+  }
+
+  Future<List<Map<String, dynamic>>> getFollowing(int accountId) async {
+    try {
+      final result = await supabase.from('follows').select('following_id').eq('follower_id', accountId);
+      final ids = result.map((e) => parseInt(e['following_id'])).toList();
+      return players.where((p) => ids.contains(parseInt(p['account_id']))).toList();
+    } catch (e) { return []; }
+  }
+
+  // ================= PRIVATE MESSAGES =================
   Future<void> loadPrivateMessages(int otherUserId) async {
     if (currentAccountId == null) return;
     try {
