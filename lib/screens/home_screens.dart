@@ -25,7 +25,12 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _playersRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) async => await widget.data.loadPlayers());
+    widget.data.updateLastSeen();
+    _playersRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
+      await widget.data.updateLastSeen();
+      await widget.data.loadPlayers();
+      await widget.data.loadUnreadMessagesCount(); // تحديث إشعارات الرسائل
+    });
   }
 
   @override
@@ -36,14 +41,16 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // 5 أزرار سفلية احترافية
     final pages = [
       HomeTab(data: widget.data),
-      PostsPage(data: widget.data),
+      PostsPage(data: widget.data), // صفحة العرض فقط
       PrivateMessagesPage(data: widget.data),
       ServicesPage(data: widget.data),
-      ProfilePage(data: widget.data), // مكان الإعدادات سابقاً
+      ProfilePage(data: widget.data), // صفحة النشر والحساب
     ];
+
+    // حساب مجموع الرسائل غير المقروءة
+    final totalUnreadMessages = widget.data.unreadMessageCounts.values.fold(0, (a, b) => a + b);
 
     return Scaffold(
       body: IndexedStack(index: index, children: pages),
@@ -57,7 +64,16 @@ class _HomePageState extends State<HomePage> {
         destinations: [
           const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
           const NavigationDestination(icon: Icon(Icons.post_add), selectedIcon: Icon(Icons.post_add, color: AppColors.gold), label: 'المنشورات'),
-          const NavigationDestination(icon: Icon(Icons.forum_outlined), selectedIcon: Icon(Icons.forum), label: 'الرسائل'),
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: totalUnreadMessages > 0,
+              backgroundColor: Colors.red,
+              label: Text('$totalUnreadMessages'),
+              child: const Icon(Icons.forum_outlined),
+            ),
+            selectedIcon: const Icon(Icons.forum),
+            label: 'الرسائل',
+          ),
           NavigationDestination(
             icon: Badge(isLabelVisible: widget.data.hasNewQuiz || widget.data.hasNewGallery, backgroundColor: AppColors.gold, child: const Icon(Icons.apps_outlined)),
             selectedIcon: const Icon(Icons.apps),
@@ -70,7 +86,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ================= 1. الرئيسية (ملونة واحترافية) =================
+// ================= 1. الرئيسية (مع شريط الأخبار المتحرك) =================
 class HomeTab extends StatefulWidget {
   final AppData data;
   const HomeTab({super.key, required this.data});
@@ -79,6 +95,24 @@ class HomeTab extends StatefulWidget {
 }
 
 class _HomeTabState extends State<HomeTab> {
+  final PageController controller = PageController();
+  Timer? timer;
+  int newsIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // إعادة تشغيل شريط الأخبار المتحرك
+    timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || widget.data.news.isEmpty || !controller.hasClients) return;
+      newsIndex = (newsIndex + 1 >= widget.data.news.length) ? 0 : newsIndex + 1;
+      controller.animateToPage(newsIndex, duration: const Duration(milliseconds: 650), curve: Curves.easeInOut);
+    });
+  }
+
+  @override
+  void dispose() { timer?.cancel(); controller.dispose(); super.dispose(); }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -121,6 +155,33 @@ class _HomeTabState extends State<HomeTab> {
             ),
             const SizedBox(height: 16),
             
+            // شريط الأخبار المتحرك (Carousel)
+            if (widget.data.news.isNotEmpty)
+              SizedBox(
+                height: 190,
+                child: PageView.builder(
+                  controller: controller,
+                  itemCount: widget.data.news.length,
+                  itemBuilder: (context, index) {
+                    final item = widget.data.news[index];
+                    final image = clean(item['image_url']);
+                    return GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NewsDetailsPage(news: item))),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.borderGold)),
+                        clipBehavior: Clip.antiAlias,
+                        child: Stack(fit: StackFit.expand, children: [
+                          if (image.isNotEmpty) CachedNetworkImage(imageUrl: image, fit: BoxFit.cover, errorWidget: (_, __, ___) => Container(color: AppColors.cardBlack, child: const Icon(Icons.newspaper, size: 50, color: AppColors.gold))) else Container(color: AppColors.cardBlack, child: const Icon(Icons.newspaper, size: 50, color: AppColors.gold)),
+                          Positioned(bottom: 0, left: 0, right: 0, child: Container(padding: const EdgeInsets.all(14), decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black87])), child: Text(clean(item['title']), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: AppColors.gold)))),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 16),
+            
             if (widget.data.importantNews.trim().isNotEmpty)
               Container(
                 decoration: BoxDecoration(color: AppColors.black, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.getColor(9), width: 2)),
@@ -136,7 +197,7 @@ class _HomeTabState extends State<HomeTab> {
                 ]),
               ),
             if (widget.data.importantNews.trim().isNotEmpty) const SizedBox(height: 16),
-            
+
             if (widget.data.leader != null)
               Card(
                 color: AppColors.getColor(4).withOpacity(0.1),
@@ -147,12 +208,6 @@ class _HomeTabState extends State<HomeTab> {
                   trailing: Text('${parseInt(widget.data.leader!['points'])} نقطة', style: TextStyle(color: AppColors.getColor(4), fontWeight: FontWeight.bold)),
                 ),
               ),
-            const SizedBox(height: 16),
-            
-            const Text('آخر الأخبار', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.gold)),
-            const SizedBox(height: 10),
-            if (widget.data.news.isEmpty) const Text('لا توجد أخبار حالياً.')
-            else ...widget.data.news.map((item) => NewsCard(data: widget.data, news: item)),
           ],
         ),
       ),
@@ -172,7 +227,128 @@ class _MiniStat extends StatelessWidget {
   }
 }
 
-// ================= 2. الخدمات (بدون الدردشة والمتجر والقفز) =================
+// ================= 2. صفحة حسابي (فيها زر النشر) =================
+class ProfilePage extends StatefulWidget {
+  final AppData data;
+  const ProfilePage({super.key, required this.data});
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  final textCtrl = TextEditingController();
+  File? _image;
+  bool _loading = false;
+
+  Future<void> _pickAvatar() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
+    if (picked == null) return;
+    if (!mounted) return;
+    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.gold)));
+    final ok = await widget.data.updateAvatar(File(picked.path));
+    if (!mounted) return;
+    Navigator.pop(context);
+    showSnack(context, ok ? 'تم تحديث الأيقونة.' : 'تعذر تحديث الأيقونة.');
+  }
+
+  Future<void> _pickPostImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (picked != null) setState(() => _image = File(picked.path));
+  }
+
+  Future<void> _post() async {
+    if (textCtrl.text.trim().isEmpty && _image == null) return;
+    setState(() => _loading = true);
+    final ok = await widget.data.addPost(textCtrl.text, _image);
+    if (!mounted) return;
+    setState(() { _loading = false; if (ok) { textCtrl.clear(); _image = null; } });
+    if (ok) showSnack(context, 'تم النشر بنجاح!');
+  }
+
+  Future<void> logout(BuildContext context) async {
+    await playClickSound();
+    await widget.data.logoutAccount();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.data,
+      builder: (context, _) {
+        final badge = widget.data.currentBadge;
+        final avatar = widget.data.currentAvatar;
+        final myPosts = widget.data.myPosts;
+
+        return Scaffold(
+          appBar: AppBar(title: const Text('حسابي'), actions: [
+            IconButton(onPressed: () => logout(context), icon: const Icon(Icons.logout, color: Colors.red)),
+          ]),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // 1. بيانات الحساب
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(children: [
+                    Stack(children: [
+                      GestureDetector(
+                        onTap: () => showAvatarDialog(context, avatar, widget.data.currentUserName),
+                        child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.gold, width: 3)), child: CircleAvatar(radius: 45, backgroundColor: AppColors.inputBlack, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, size: 45, color: AppColors.gold) : null)),
+                      ),
+                      Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: _pickAvatar, child: Container(decoration: BoxDecoration(color: AppColors.gold, shape: BoxShape.circle, border: Border.all(color: AppColors.black, width: 2)), padding: const EdgeInsets.all(8), child: const Icon(Icons.camera_alt, size: 20, color: Colors.black)))),
+                    ]),
+                    const SizedBox(height: 12),
+                    Text(widget.data.currentUserName, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: AppColors.gold)),
+                    Text('معرف الحساب: ${widget.data.currentAccountId}'),
+                    Text('المستوى: ${widget.data.currentLevel} | النقاط: ${widget.data.currentPoints}'),
+                    if (badge != null) Text('${badge.icon} ${badge.name}'),
+                    if (widget.data.userRewards.isNotEmpty)
+                      Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(spacing: 8, children: widget.data.userRewards.map((r) => Text(clean(r['reward_icon']), style: const TextStyle(fontSize: 24))).toList())),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (widget.data.isAdmin)
+                ServiceTile(icon: Icons.admin_panel_settings, title: 'لوحة الإدارة', subtitle: 'إدارة التطبيق', colorIndex: 11, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPanelPage(data: widget.data)))),
+              
+              const SizedBox(height: 16),
+              
+              // 2. زر النشر (مثل تيك توك / تويتر) موجود هنا في صفحة حسابي
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(children: [
+                    TextField(controller: textCtrl, maxLines: 3, decoration: const InputDecoration(hintText: 'بماذا تفكر يا أوتاكو؟', border: InputBorder.none)),
+                    if (_image != null) Stack(alignment: Alignment.topRight, children: [
+                      Image.file(_image!, height: 150, width: double.infinity, fit: BoxFit.cover),
+                      IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _image = null)),
+                    ]),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      IconButton(icon: const Icon(Icons.image, color: AppColors.gold), onPressed: _pickPostImage),
+                      FilledButton.icon(onPressed: _loading ? null : _post, icon: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send), label: const Text('نشر')),
+                    ]),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // 3. منشوراتي
+              const Text('منشوراتي', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.gold)),
+              const SizedBox(height: 10),
+              if (myPosts.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لم تقم بنشر أي شيء بعد.')))
+              else ...myPosts.map((post) => PostCard(data: widget.data, post: post)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ================= الخدمات =================
 class ServicesPage extends StatelessWidget {
   final AppData data;
   const ServicesPage({super.key, required this.data});
@@ -210,81 +386,6 @@ class ServiceTile extends StatelessWidget {
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.arrow_back_ios, size: 18),
       ),
-    );
-  }
-}
-
-// ================= 3. حسابي (مثل تيك توك) =================
-class ProfilePage extends StatelessWidget {
-  final AppData data;
-  const ProfilePage({super.key, required this.data});
-
-  Future<void> _pickAvatar(BuildContext context) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
-    if (picked == null) return;
-    if (!context.mounted) return;
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.gold)));
-    final ok = await data.updateAvatar(File(picked.path));
-    if (!context.mounted) return;
-    Navigator.pop(context);
-    showSnack(context, ok ? 'تم تحديث الأيقونة.' : 'تعذر تحديث الأيقونة.');
-  }
-
-  Future<void> logout(BuildContext context) async {
-    await playClickSound();
-    await data.logoutAccount();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: data,
-      builder: (context, _) {
-        final badge = data.currentBadge;
-        final avatar = data.currentAvatar;
-        final myPosts = data.myPosts;
-
-        return Scaffold(
-          appBar: AppBar(title: const Text('حسابي'), actions: [
-            IconButton(onPressed: () => logout(context), icon: const Icon(Icons.logout, color: Colors.red)),
-          ]),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(children: [
-                    Stack(children: [
-                      GestureDetector(
-                        onTap: () => showAvatarDialog(context, avatar, data.currentUserName),
-                        child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.gold, width: 3)), child: CircleAvatar(radius: 45, backgroundColor: AppColors.inputBlack, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, size: 45, color: AppColors.gold) : null)),
-                      ),
-                      Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: () => _pickAvatar(context), child: Container(decoration: BoxDecoration(color: AppColors.gold, shape: BoxShape.circle, border: Border.all(color: AppColors.black, width: 2)), padding: const EdgeInsets.all(8), child: const Icon(Icons.camera_alt, size: 20, color: Colors.black)))),
-                    ]),
-                    const SizedBox(height: 12),
-                    Text(data.currentUserName, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: AppColors.gold)),
-                    Text('معرف الحساب: ${data.currentAccountId}'),
-                    Text('المستوى: ${data.currentLevel} | النقاط: ${data.currentPoints}'),
-                    if (badge != null) Text('${badge.icon} ${badge.name}'),
-                    if (data.userRewards.isNotEmpty)
-                      Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(spacing: 8, children: data.userRewards.map((r) => Text(clean(r['reward_icon']), style: const TextStyle(fontSize: 24))).toList())),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (data.isAdmin)
-                ServiceTile(icon: Icons.admin_panel_settings, title: 'لوحة الإدارة', subtitle: 'إدارة التطبيق', colorIndex: 11, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminPanelPage(data: data)))),
-              const SizedBox(height: 16),
-              const Text('منشوراتي', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.gold)),
-              const SizedBox(height: 10),
-              if (myPosts.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لم تقم بنشر أي شيء بعد.')))
-              else ...myPosts.map((post) => PostCard(data: data, post: post, isProfile: true)),
-            ],
-          ),
-        );
-      },
     );
   }
 }
