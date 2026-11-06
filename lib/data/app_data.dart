@@ -34,17 +34,14 @@ class AppData extends ChangeNotifier {
   List<Map<String, dynamic>> privateMessages = [];
   List<Map<String, dynamic>> userRewards = [];
 
-  // الإعجابات والتعليقات على المنشورات
   final Map<dynamic, int> postLikeCounts = {};
   final Set<String> likedPosts = {};
   final Map<dynamic, int> postCommentCounts = {};
 
-  // الأخبار
   final Map<dynamic, int> likeCounts = {};
   final Set<String> likedNews = {};
   final Map<dynamic, int> commentCounts = {};
 
-  // الاستطلاع
   Map<String, dynamic>? activePoll;
   List<Map<String, dynamic>> activePollOptions = [];
   List<Map<String, dynamic>> pollVoters = [];
@@ -66,7 +63,6 @@ class AppData extends ChangeNotifier {
   int _lastSeenQuizCount = 0;
   int _lastSeenGalleryCount = 0;
 
-  // ==================== Getters ====================
   bool get isAdmin => _isAdmin;
   bool get hasAccount => currentAccountId != null && currentUserName.trim().isNotEmpty;
   bool get hasQuizQuestions => quizQuestions.isNotEmpty;
@@ -111,14 +107,24 @@ class AppData extends ChangeNotifier {
     return '';
   }
 
-  // ==================== Mark Seen ====================
   Future<void> setAdminSession(bool value) async { _isAdmin = value; notifyListeners(); }
   Future<void> markNewsSeen() async { if (news.isNotEmpty) { _lastSeenNewsId = clean(news.first['id']); await LocalCache.saveString('last_seen_news_id', _lastSeenNewsId); notifyListeners(); } }
   Future<void> markQuizSeen() async { _lastSeenQuizCount = quizQuestions.length; await LocalCache.saveInt('last_seen_quiz_count', _lastSeenQuizCount); notifyListeners(); }
   Future<void> markGallerySeen() async { _lastSeenGalleryCount = gallery.length; await LocalCache.saveInt('last_seen_gallery_count', _lastSeenGalleryCount); notifyListeners(); }
   Future<void> markImportantNewsSeen() async { await LocalCache.saveString('last_seen_important_news', importantNewsUpdatedAt); notifyListeners(); }
 
-  // ==================== الحساب ====================
+  // ✅ الدالة الناقصة التي كانت تسبب الخطأ
+  Future<void> updateLastSeen() async {
+    if (currentAccountId == null) return;
+    try {
+      await supabase.from('players').update({
+        'last_seen': DateTime.now().toUtc().toIso8601String(),
+      }).eq('account_id', currentAccountId!);
+    } catch (e) {
+      debugPrint('Update last seen error: $e');
+    }
+  }
+
   Future<void> loadLocalAccount() async {
     final prefs = await SharedPreferences.getInstance();
     currentAccountId = int.tryParse(prefs.getString('mr_otaku_account_id') ?? '');
@@ -154,7 +160,6 @@ class AppData extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==================== Load Data ====================
   Future<void> loadData() async {
     loading = true; notifyListeners();
     try {
@@ -185,7 +190,6 @@ class AppData extends ChangeNotifier {
     try { final result = await supabase.from('players').select().order('points', ascending: false); players = List<Map<String, dynamic>>.from(result); notifyListeners(); } catch (e) {}
   }
 
-  // ==================== Posts ====================
   Future<void> loadPosts() async {
     try { final result = await supabase.from('posts').select().order('created_at', ascending: false); posts = List<Map<String, dynamic>>.from(result); await _loadPostInteractions(); notifyListeners(); } catch (e) {}
   }
@@ -247,7 +251,6 @@ class AppData extends ChangeNotifier {
     } catch (e) { return false; }
   }
 
-  // ==================== Private Messages ====================
   Future<void> loadPrivateMessages(int otherUserId) async {
     if (currentAccountId == null) return;
     try {
@@ -274,7 +277,6 @@ class AppData extends ChangeNotifier {
     } catch (e) {}
   }
 
-  // ==================== Rewards ====================
   Future<void> loadUserRewards() async {
     if (currentAccountId == null) return;
     try { final result = await supabase.from('user_rewards').select().eq('account_id', currentAccountId!); userRewards = List<Map<String, dynamic>>.from(result); notifyListeners(); } catch (e) {}
@@ -285,7 +287,6 @@ class AppData extends ChangeNotifier {
   }
   bool hasReward(String rewardName) => userRewards.any((r) => r['reward_name'] == rewardName);
 
-  // ==================== Important News ====================
   Future<void> loadImportantNews() async {
     try {
       final result = await supabase.from('important_news').select().order('updated_at', ascending: false).limit(1).maybeSingle();
@@ -303,7 +304,6 @@ class AppData extends ChangeNotifier {
     try { await supabase.from('important_news').delete().gte('id', 0); importantNews = ''; importantNewsUpdatedAt = ''; notifyListeners(); return true; } catch (e) { return false; }
   }
 
-  // ==================== Gallery ====================
   Future<void> loadGallery() async {
     try { final result = await supabase.from('gallery').select().order('created_at', ascending: false); gallery = List<Map<String, dynamic>>.from(result); } catch (e) { gallery = []; }
     notifyListeners();
@@ -326,7 +326,6 @@ class AppData extends ChangeNotifier {
     try { await supabase.from('gallery').delete().eq('id', id); await loadGallery(); return true; } catch (e) { return false; }
   }
 
-  // ==================== Avatar ====================
   Future<bool> updateAvatar(File imageFile) async {
     if (currentAccountId == null) return false;
     try {
@@ -344,7 +343,6 @@ class AppData extends ChangeNotifier {
     try { final ext = safeExtension(file.path); final path = '$folder/${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, file); return supabase.storage.from('news-images').getPublicUrl(path); } catch (e) { return null; }
   }
 
-  // ==================== Quiz ====================
   Future<void> loadQuizQuestions() async {
     try { final result = await supabase.from('quiz_questions').select().order('created_at', ascending: true); quizQuestions = List<Map<String, dynamic>>.from(result); } catch (e) { quizQuestions = []; }
   }
@@ -364,7 +362,6 @@ class AppData extends ChangeNotifier {
     try { await supabase.from('quiz_questions').delete().eq('id', id); await loadQuizQuestions(); return true; } catch (e) { return false; }
   }
 
-  // ==================== News Interactions ====================
   Future<void> loadLikes() async {
     try {
       final clientId = await getClientId();
@@ -402,7 +399,6 @@ class AppData extends ChangeNotifier {
     return id;
   }
 
-  // ==================== Notifications ====================
   Future<void> loadNotifications() async {
     try {
       final prefs = await SharedPreferences.getInstance(); final saved = prefs.getStringList('mr_otaku_read_notifications');
@@ -419,7 +415,6 @@ class AppData extends ChangeNotifier {
     try { await supabase.from('notifications').insert({'title': title.trim(), 'body': body.trim()}); await loadNotifications(); notifyListeners(); return true; } catch (e) { return false; }
   }
 
-  // ==================== Poll ====================
   Future<void> loadPoll() async {
     try {
       final polls = await supabase.from('polls').select().eq('active', true).order('created_at', ascending: false);
@@ -458,7 +453,6 @@ class AppData extends ChangeNotifier {
     } catch (e) { return false; }
   }
 
-  // ==================== News CRUD ====================
   Future<bool> addNews(String title, String description, {File? imageFile}) async {
     if (!_isAdmin || title.trim().isEmpty) return false;
     try {
@@ -473,7 +467,6 @@ class AppData extends ChangeNotifier {
     try { await supabase.from('news').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; }
   }
 
-  // ==================== Players CRUD ====================
   Future<bool> addPlayer(String name, int points, {int? accountId}) async {
     if (!_isAdmin || name.trim().isEmpty) return false;
     try {
@@ -495,7 +488,6 @@ class AppData extends ChangeNotifier {
     try { await supabase.from('players').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; }
   }
 
-  // ==================== Latest ====================
   Future<bool> addLatest(String title, String description) async {
     if (!_isAdmin || title.trim().isEmpty) return false;
     try { await supabase.from('latest').insert({'title': title.trim(), 'description': description.trim()}); await loadData(); return true; } catch (e) { return false; }
@@ -505,7 +497,6 @@ class AppData extends ChangeNotifier {
     try { await supabase.from('latest').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; }
   }
 
-  // ==================== Admin Messages ====================
   Future<bool> sendMessage(String name, String message) async {
     if (message.trim().isEmpty) return false;
     try { await supabase.from('messages').insert({'name': currentUserName.trim().isNotEmpty ? currentUserName : name.trim().isEmpty ? 'مستخدم' : name.trim(), 'message': message.trim()}); return true; } catch (e) { return false; }
@@ -515,7 +506,6 @@ class AppData extends ChangeNotifier {
     try { await supabase.from('messages').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; }
   }
 
-  // ==================== Purchase Requests ====================
   Future<bool> approvePurchase(Map<String, dynamic> request) async {
     if (!_isAdmin || request['status'] != 'pending') return false;
     try {
