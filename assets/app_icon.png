@@ -1,24 +1,105 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MR. OTAKU</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MR OTAKU</title>
 <style>
-body {
-  margin: 0;
-  background: #000;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-}
-img {
-  width: 100%;
-  max-width: 600px;
-  height: auto;
-}
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #121212;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+
+  .logo-container {
+    width: 350px;
+    height: 350px;
+    background: radial-gradient(circle, #2a2a2a 0%, #111 80%);
+    border: 6px solid #b5b5b5;
+    border-radius: 40px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 15px rgba(255, 255, 255, 0.2);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    text-align: center;
+    padding: 20px;
+  }
+
+  /* تأثير الزخارف الخلفية الخفيفة */
+  .logo-container::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image: radial-gradient(#444 1px, transparent 1px);
+    background-size: 20px 20px;
+    opacity: 0.15;
+    z-index: 1;
+  }
+
+  .content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* أيقونة تعبيرية تمثل الشعار المركزي */
+  .icon-symbol {
+    font-size: 65px;
+    color: #ffffff;
+    margin-bottom: 10px;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+  }
+
+  .title {
+    font-size: 28px;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: 2px;
+    margin: 0;
+    text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  }
+
+  .subtitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: #cccccc;
+    letter-spacing: 3px;
+    margin: 5px 0 12px 0;
+    text-transform: uppercase;
+  }
+
+  .author {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
 </style>
 </head>
 <body>
-<img src="data:image/jpeg;base64, 
+
+<div class="logo-container">
+  <div class="content">
+    <!-- رمز مقارب للشعار (بوابة توري / سيف) -->
+    <div class="icon-symbol">⛩️🗡️</div>
+    <h1 class="title">MR OTAKU</h1>
+    <div class="subtitle">THE OTAKU HUB</div>
+    <div class="author">برهان محمد البريهي</div>
+  </div>
+</div>
+
+</body>
+</html>
