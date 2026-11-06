@@ -2,6 +2,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'dart:io';
 import 'colors.dart';
 
 Future<void> playClickSound() async {
@@ -11,6 +15,22 @@ Future<void> playClickSound() async {
       await HapticFeedback.lightImpact();
     }
   } catch (_) {}
+}
+
+// ✅ دالة تنزيل الصورة إلى معرض الهاتف
+Future<bool> downloadImageToGallery(String imageUrl, {String fileName = 'mr_otaku_image'}) async {
+  try {
+    final response = await http.get(Uri.parse(imageUrl));
+    if (response.statusCode != 200) return false;
+    final result = await ImageGallerySaver.saveImage(
+      response.bodyBytes,
+      name: '${fileName}_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    return result != null;
+  } catch (e) {
+    debugPrint('Download error: $e');
+    return false;
+  }
 }
 
 int parseInt(dynamic value) => int.tryParse(value?.toString() ?? '') ?? 0;
