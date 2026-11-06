@@ -6,6 +6,7 @@ import 'package:workmanager/workmanager.dart';
 
 import 'core/colors.dart';
 import 'core/helpers.dart';
+import 'core/theme_manager.dart'; // ✅ ملف الثيمات
 import 'data/app_data.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screens.dart';
@@ -17,6 +18,7 @@ Future<void> main() async {
     anonKey: 'sb_publishable_EZLVSUviR39RXi6OP3OqfQ_3j7vMZcU',
   );
   await LocalCache.init();
+  await ThemeManager.instance.load(); // ✅ تحميل الثيم المحفوظ
   runApp(const MrOtakuApp());
 
   Future.delayed(const Duration(seconds: 2), () async {
@@ -56,7 +58,7 @@ class _MrOtakuAppState extends State<MrOtakuApp> {
     Future.microtask(() async {
       try {
         if (data.hasAccount) {
-          final admin = await checkAdminSession(data); // من ملف helpers
+          final admin = await checkAdminSession(data);
           await data.setAdminSession(admin);
           await data.loadData();
         }
@@ -67,51 +69,73 @@ class _MrOtakuAppState extends State<MrOtakuApp> {
   }
 
   ThemeData get theme {
+    final primary = ThemeManager.instance.primaryColor; // ✅ اللون الديناميكي
     return ThemeData(
       brightness: Brightness.dark,
       useMaterial3: true,
       scaffoldBackgroundColor: AppColors.black,
       cardColor: AppColors.cardBlack,
-      colorScheme: const ColorScheme.dark(
-        primary: AppColors.gold,
+      colorScheme: ColorScheme.dark(
+        primary: primary,
         onPrimary: Colors.black,
-        secondary: AppColors.gold,
+        secondary: primary,
         onSecondary: Colors.black,
         surface: AppColors.cardBlack,
         onSurface: Colors.white,
       ),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: AppColors.black,
-        foregroundColor: AppColors.gold,
+        foregroundColor: primary,
         centerTitle: true,
         elevation: 0,
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.black,
-        indicatorColor: AppColors.gold.withOpacity(0.2),
-        labelTextStyle: MaterialStateProperty.all(const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
-        iconTheme: MaterialStateProperty.all(const IconThemeData(color: AppColors.gold)),
+        indicatorColor: primary.withOpacity(0.25),
+        labelTextStyle: MaterialStateProperty.all(
+          TextStyle(color: primary, fontWeight: FontWeight.bold),
+        ),
+        iconTheme: MaterialStateProperty.all(IconThemeData(color: primary)),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.inputBlack,
-        labelStyle: const TextStyle(color: AppColors.gold),
-        hintStyle: TextStyle(color: AppColors.gold.withOpacity(0.5)),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.gold)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.borderGold)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.gold, width: 1.5)),
+        labelStyle: TextStyle(color: primary),
+        hintStyle: TextStyle(color: primary.withOpacity(0.5)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: primary),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: primary.withOpacity(0.4)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: primary, width: 1.5),
+        ),
       ),
       cardTheme: CardTheme(
         color: AppColors.cardBlack,
         elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: const BorderRadius.all(Radius.circular(18)), side: const BorderSide(color: AppColors.borderGold)),
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.all(Radius.circular(18)),
+          side: BorderSide(color: primary.withOpacity(0.4)),
+        ),
       ),
-      iconTheme: const IconThemeData(color: AppColors.gold),
-      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: Colors.black)),
-      textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: AppColors.gold)),
-      outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(foregroundColor: AppColors.gold, side: const BorderSide(color: AppColors.gold))),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(backgroundColor: AppColors.gold, foregroundColor: Colors.black),
-      progressIndicatorTheme: const ProgressIndicatorThemeData(color: AppColors.gold),
+      iconTheme: IconThemeData(color: primary),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(backgroundColor: primary, foregroundColor: Colors.black),
+      ),
+      textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: primary)),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(foregroundColor: primary, side: BorderSide(color: primary)),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: primary,
+        foregroundColor: Colors.black,
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: primary),
     );
   }
 
@@ -121,15 +145,21 @@ class _MrOtakuAppState extends State<MrOtakuApp> {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: theme,
-        home: const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.gold))),
+        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
 
+    // ✅ الاستماع لكل من AppData و ThemeManager
     return AnimatedBuilder(
-      animation: data,
+      animation: Listenable.merge([data, ThemeManager.instance]),
       builder: (_, __) {
         Widget home = !data.hasAccount ? AccountSetupPage(data: data) : HomePage(data: data);
-        return MaterialApp(debugShowCheckedModeBanner: false, title: 'مستر أوتاكو', theme: theme, home: home);
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'مستر أوتاكو',
+          theme: theme,
+          home: home,
+        );
       },
     );
   }
@@ -190,7 +220,10 @@ void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
       try { Supabase.instance.client; } catch (_) {
-        await Supabase.initialize(url: 'https://sekchgllbimoedsjoumi.supabase.co', anonKey: 'sb_publishable_EZLVSUviR39RXi6OP3OqfQ_3j7vMZcU');
+        await Supabase.initialize(
+          url: 'https://sekchgllbimoedsjoumi.supabase.co',
+          anonKey: 'sb_publishable_EZLVSUviR39RXi6OP3OqfQ_3j7vMZcU',
+        );
       }
     } catch (_) {}
     await NotificationService.init();
