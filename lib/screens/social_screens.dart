@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:video_player/video_player.dart';
 
 import '../core/colors.dart';
 import '../core/helpers.dart';
@@ -30,7 +31,7 @@ class PostsPage extends StatelessWidget {
 }
 
 // =======================================================
-// بطاقة المنشور (قلوب متحركة + حفظ + مشاركة + إبلاغ)
+// بطاقة المنشور (مع دعم الفيديو)
 // =======================================================
 class PostCard extends StatefulWidget {
   final AppData data; final Map<String, dynamic> post;
@@ -57,17 +58,14 @@ class _PostCardState extends State<PostCard> {
 
   Future<void> _report() async {
     final ctrl = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('الإبلاغ عن المنشور'),
-        content: TextField(controller: ctrl, maxLines: 3, decoration: const InputDecoration(hintText: 'سبب الإبلاغ...')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(context, ctrl.text.trim()), child: const Text('إبلاغ')),
-        ],
-      ),
-    );
+    final reason = await showDialog<String>(context: context, builder: (_) => AlertDialog(
+      title: const Text('الإبلاغ عن المنشور'),
+      content: TextField(controller: ctrl, maxLines: 3, decoration: const InputDecoration(hintText: 'سبب الإبلاغ...')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+        FilledButton(onPressed: () => Navigator.pop(context, ctrl.text.trim()), child: const Text('إبلاغ')),
+      ],
+    ));
     if (reason != null && reason.isNotEmpty) {
       final ok = await widget.data.submitComplaint(targetType: 'post', targetId: widget.post['id'], reason: reason);
       if (mounted) showSnack(context, ok ? 'تم إرسال البلاغ للإدارة.' : 'تعذر الإرسال.');
@@ -78,7 +76,9 @@ class _PostCardState extends State<PostCard> {
   Widget build(BuildContext context) {
     final data = widget.data; final post = widget.post;
     final name = clean(post['user_name']); final avatar = data.avatarForAccount(post['account_id']);
-    final img = clean(post['image_url']); final postId = post['id'];
+    final img = clean(post['image_url']);
+    final vid = clean(post['video_url']);
+    final postId = post['id'];
     final liked = data.likedPosts.contains(postId.toString());
     final saved = data.isPostSaved(postId);
     final isVerified = data.isPlayerAdmin(post['account_id']);
@@ -93,20 +93,21 @@ class _PostCardState extends State<PostCard> {
           Row(children: [Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(name))), if (isVerified) ...[const SizedBox(width: 4), const Icon(Icons.verified, color: Colors.blue, size: 16)]]),
           Text(time, style: const TextStyle(fontSize: 11, color: Colors.grey)),
         ])),
-        PopupMenuButton(
-          itemBuilder: (_) => [
-            if (data.isAdmin || parseInt(post['account_id']) == data.currentAccountId)
-              const PopupMenuItem(value: 'delete', child: Text('حذف')),
-            const PopupMenuItem(value: 'report', child: Text('إبلاغ')),
-          ],
-          onSelected: (v) { if (v == 'delete') data.deletePost(postId); else if (v == 'report') _report(); },
-        ),
+        PopupMenuButton(itemBuilder: (_) => [
+          if (data.isAdmin || parseInt(post['account_id']) == data.currentAccountId) const PopupMenuItem(value: 'delete', child: Text('حذف')),
+          const PopupMenuItem(value: 'report', child: Text('إبلاغ')),
+        ], onSelected: (v) { if (v == 'delete') data.deletePost(postId); else if (v == 'report') _report(); }),
       ]),
       const SizedBox(height: 10),
-      Text(clean(post['content']), style: const TextStyle(fontSize: 16)),
+      if (clean(post['content']).isNotEmpty) Text(clean(post['content']), style: const TextStyle(fontSize: 16)),
       if (img.isNotEmpty) ...[
         const SizedBox(height: 10),
         GestureDetector(onDoubleTap: () { if (!liked) _handleLike(); }, child: ClipRRect(borderRadius: BorderRadius.circular(12), child: CachedNetworkImage(imageUrl: img, width: double.infinity, fit: BoxFit.cover, errorWidget: (_, __, ___) => const SizedBox()))),
+      ],
+      // 🎬 الفيديو
+      if (vid.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        ClipRRect(borderRadius: BorderRadius.circular(12), child: InlineVideo(url: vid)),
       ],
       const SizedBox(height: 10),
       Row(children: [
@@ -123,8 +124,53 @@ class _PostCardState extends State<PostCard> {
   }
 }
 
+// 🎬 مشغل فيديو مضمّن
+class InlineVideo extends StatefulWidget {
+  final String url;
+  const InlineVideo({super.key, required this.url});
+  @override
+  State<InlineVideo> createState() => _InlineVideoState();
+}
+
+class _InlineVideoState extends State<InlineVideo> {
+  late VideoPlayerController _controller;
+  bool _muted = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _controller.initialize().then((_) {
+      _controller.setLooping(true);
+      _controller.setVolume(0);
+      _controller.play();
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() { _controller.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_controller.value.isInitialized) {
+      return Container(height: 250, color: AppColors.cardBlack, child: const Center(child: CircularProgressIndicator(color: AppColors.gold)));
+    }
+    return Stack(children: [
+      AspectRatio(aspectRatio: _controller.value.aspectRatio, child: VideoPlayer(_controller)),
+      Positioned(bottom: 8, right: 8, child: CircleAvatar(
+        backgroundColor: Colors.black54,
+        child: IconButton(
+          icon: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white, size: 20),
+          onPressed: () { setState(() => _muted = !_muted); _controller.setVolume(_muted ? 0 : 1); },
+        ),
+      )),
+    ]);
+  }
+}
+
 // =======================================================
-// تعليقات المنشورات (صور + رد + إعجاب)
+// تعليقات المنشورات
 // =======================================================
 class PostCommentsSheet extends StatefulWidget {
   final AppData data; final dynamic postId;
@@ -193,7 +239,7 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
 }
 
 // =======================================================
-// صفحة حساب أي مستخدم (TikTok-style)
+// صفحة حساب أي مستخدم
 // =======================================================
 class UserProfilePage extends StatefulWidget {
   final AppData data; final int accountId; final String userName;
