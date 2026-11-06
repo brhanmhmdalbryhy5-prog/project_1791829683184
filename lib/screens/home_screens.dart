@@ -11,6 +11,7 @@ import '../data/app_data.dart';
 import 'social_screens.dart';
 import 'admin_screens.dart';
 import 'games_screens.dart';
+import '../core/theme_manager.dart';
 
 class HomePage extends StatefulWidget {
   final AppData data;
