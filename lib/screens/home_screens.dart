@@ -29,7 +29,7 @@ class _HomePageState extends State<HomePage> {
     _playersRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
       await widget.data.updateLastSeen();
       await widget.data.loadPlayers();
-      await widget.data.loadUnreadMessagesCount(); // تحديث إشعارات الرسائل
+      await widget.data.loadUnreadMessagesCount();
     });
   }
 
@@ -43,14 +43,14 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final pages = [
       HomeTab(data: widget.data),
-      PostsPage(data: widget.data), // صفحة العرض فقط
+      PostsPage(data: widget.data),
       PrivateMessagesPage(data: widget.data),
       ServicesPage(data: widget.data),
-      ProfilePage(data: widget.data), // صفحة النشر والحساب
+      ProfilePage(data: widget.data),
     ];
 
     // حساب مجموع الرسائل غير المقروءة
-    final totalUnreadMessages = widget.data.unreadMessageCounts.values.fold(0, (a, b) => a + b);
+    final totalUnreadMessages = widget.data.unreadMessageCounts.values.fold<int>(0, (a, b) => a + b);
 
     return Scaffold(
       body: IndexedStack(index: index, children: pages),
@@ -102,7 +102,6 @@ class _HomeTabState extends State<HomeTab> {
   @override
   void initState() {
     super.initState();
-    // إعادة تشغيل شريط الأخبار المتحرك
     timer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted || widget.data.news.isEmpty || !controller.hasClients) return;
       newsIndex = (newsIndex + 1 >= widget.data.news.length) ? 0 : newsIndex + 1;
@@ -130,7 +129,6 @@ class _HomeTabState extends State<HomeTab> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // البطاقة الملونة للمستخدم
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -155,7 +153,6 @@ class _HomeTabState extends State<HomeTab> {
             ),
             const SizedBox(height: 16),
             
-            // شريط الأخبار المتحرك (Carousel)
             if (widget.data.news.isNotEmpty)
               SizedBox(
                 height: 190,
@@ -288,7 +285,6 @@ class _ProfilePageState extends State<ProfilePage> {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // 1. بيانات الحساب
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(18),
@@ -316,7 +312,6 @@ class _ProfilePageState extends State<ProfilePage> {
               
               const SizedBox(height: 16),
               
-              // 2. زر النشر (مثل تيك توك / تويتر) موجود هنا في صفحة حسابي
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -335,7 +330,6 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 16),
               
-              // 3. منشوراتي
               const Text('منشوراتي', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.gold)),
               const SizedBox(height: 10),
               if (myPosts.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لم تقم بنشر أي شيء بعد.')))
