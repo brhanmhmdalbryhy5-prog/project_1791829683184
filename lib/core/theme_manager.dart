@@ -29,6 +29,33 @@ class ThemeManager extends ChangeNotifier {
     return AppColors.gold;
   }
 
+  // ✅ ألوان براقة للبطاقات
+  LinearGradient getPrimaryGradient() {
+    final color = primaryColor;
+    return LinearGradient(
+      colors: [color.withOpacity(0.9), color.withOpacity(0.5)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+  }
+
+  LinearGradient getButtonGradient() {
+    final color = primaryColor;
+    return LinearGradient(
+      colors: [color, color.withOpacity(0.7)],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    );
+  }
+
+  List<BoxShadow> getGlowShadow() {
+    final color = primaryColor;
+    return [
+      BoxShadow(color: color.withOpacity(0.5), blurRadius: 12, spreadRadius: 1),
+      BoxShadow(color: color.withOpacity(0.2), blurRadius: 20, spreadRadius: 2),
+    ];
+  }
+
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -57,7 +84,7 @@ class ThemeManager extends ChangeNotifier {
   }
 }
 
-// ================= صفحة اختيار الثيمات + الوضع الليلي =================
+// ================= صفحة اختيار الثيمات =================
 class ThemePickerPage extends StatelessWidget {
   const ThemePickerPage({super.key});
 
@@ -84,17 +111,6 @@ class ThemePickerPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Row(children: [
-                    Icon(Icons.info_outline, color: Colors.blue),
-                    SizedBox(width: 12),
-                    Expanded(child: Text('اختر لون التطبيق المفضل لديك. سيتم حفظه تلقائياً.', style: TextStyle(fontSize: 13))),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 16),
               ...ThemeManager.themes.map((theme) {
                 final isSelected = ThemeManager.instance.themeId == theme['id'];
                 final color = theme['color'] as Color;
@@ -109,9 +125,9 @@ class ThemePickerPage extends StatelessWidget {
                     leading: Container(
                       width: 45, height: 45,
                       decoration: BoxDecoration(
-                        color: color,
+                        gradient: LinearGradient(colors: [color, color.withOpacity(0.6)]),
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 8)],
+                        boxShadow: [BoxShadow(color: color.withOpacity(0.5), blurRadius: 8)],
                       ),
                       child: Icon(theme['icon'] as IconData, color: Colors.white, size: 24),
                     ),
