@@ -3,12 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // ضروري للـ Realtime
 
 import '../core/colors.dart';
 import '../core/helpers.dart';
 import '../data/app_data.dart';
 
-// ================= 1. صفحة المنشورات (للعرض فقط الآن) =================
+// ================= 1. صفحة المنشورات =================
 class PostsPage extends StatelessWidget {
   final AppData data;
   const PostsPage({super.key, required this.data});
@@ -32,7 +33,6 @@ class PostsPage extends StatelessWidget {
   }
 }
 
-// 🃏 بطاقة المنشور (مشتركة)
 class PostCard extends StatelessWidget {
   final AppData data;
   final Map<String, dynamic> post;
@@ -142,7 +142,7 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
   }
 }
 
-// ================= 2. الرسائل الخاصة (مع ميزة المقروء وغير المقروء) =================
+// ================= 2. الرسائل الخاصة (مع Realtime) =================
 class PrivateMessagesPage extends StatelessWidget {
   final AppData data;
   const PrivateMessagesPage({super.key, required this.data});
@@ -161,7 +161,7 @@ class PrivateMessagesPage extends StatelessWidget {
               final avatar = clean(p['avatar_url']); 
               final name = clean(p['name']);
               final userId = parseInt(p['account_id']);
-              final unreadCount = data.unreadMessageCounts[userId] ?? 0; // 👈 جلب عدد الرسائل غير المقروءة
+              final unreadCount = data.unreadMessageCounts[userId] ?? 0;
 
               return Card(child: ListTile(
                 leading: GestureDetector(
@@ -169,16 +169,11 @@ class PrivateMessagesPage extends StatelessWidget {
                   child: CircleAvatar(backgroundColor: AppColors.gold, backgroundImage: avatar.isNotEmpty ? CachedNetworkImageProvider(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, color: Colors.black) : null)
                 ),
                 title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.getColorForName(name))),
-                // 👇 إظهار التنبيه الأحمر
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (unreadCount > 0)
-                      Badge(
-                        label: Text('$unreadCount'),
-                        backgroundColor: Colors.red,
-                        textColor: Colors.white,
-                      ),
+                      Badge(label: Text('$unreadCount'), backgroundColor: Colors.red, textColor: Colors.white),
                     const SizedBox(width: 8),
                     const Icon(Icons.message, color: AppColors.gold),
                   ],
@@ -193,6 +188,7 @@ class PrivateMessagesPage extends StatelessWidget {
   }
 }
 
+// 💬 شاشة المحادثة (تم تحويلها إلى Realtime)
 class ChatScreen extends StatefulWidget {
   final AppData data; final Map<String, dynamic> other;
   const ChatScreen({super.key, required this.data, required this.other});
@@ -202,14 +198,44 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final ctrl = TextEditingController();
-  Timer? timer;
+  final supabase = Supabase.instance.client;
+  RealtimeChannel? _channel;
 
   @override
-  void initState() { super.initState(); _load(); timer = Timer.periodic(const Duration(seconds: 3), (_) => _load()); }
+  void initState() {
+    super.initState();
+    _load();
+    
+    // 🌟 تفعيل التحديث الفوري (Realtime) بدلاً من Timer
+    _channel = supabase.channel('public:private_messages')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'private_messages',
+        callback: (payload) {
+          final newMsg = payload.newRecord;
+          if ((parseInt(newMsg['sender_id']) == widget.data.currentAccountId && parseInt(newMsg['receiver_id']) == parseInt(widget.other['account_id'])) ||
+              (parseInt(newMsg['sender_id']) == parseInt(widget.other['account_id']) && parseInt(newMsg['receiver_id']) == widget.data.currentAccountId)) {
+            _load(); // تحديث الرسائل فور وصول رسالة جديدة
+          }
+        }
+      ).subscribe();
+  }
+
   Future<void> _load() async => await widget.data.loadPrivateMessages(parseInt(widget.other['account_id']));
-  Future<void> _send() async { if (ctrl.text.trim().isEmpty) return; final ok = await widget.data.sendPrivateMessage(parseInt(widget.other['account_id']), ctrl.text); if (ok) { ctrl.clear(); await _load(); } }
+  
+  Future<void> _send() async { 
+    if (ctrl.text.trim().isEmpty) return; 
+    final ok = await widget.data.sendPrivateMessage(parseInt(widget.other['account_id']), ctrl.text); 
+    if (ok) { ctrl.clear(); } 
+  }
+
   @override
-  void dispose() { timer?.cancel(); ctrl.dispose(); super.dispose(); }
+  void dispose() { 
+    _channel?.unsubscribe(); // إلغاء الاشتراك عند الخروج
+    ctrl.dispose(); 
+    super.dispose(); 
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -236,7 +262,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ================= 3. المعرض والجوائز =================
+// ================= 3. المعرض (مع Hero Animation) =================
 class GalleryPage extends StatefulWidget {
   final AppData data;
   const GalleryPage({super.key, required this.data});
@@ -281,13 +307,22 @@ class _GalleryPageState extends State<GalleryPage> {
                     padding: const EdgeInsets.all(16), itemCount: widget.data.gallery.length,
                     itemBuilder: (_, index) {
                       final item = widget.data.gallery[index];
+                      final tag = 'gallery_${item['id']}'; // 🌟 مفتاح التكبير الانسيابي
+
                       return GestureDetector(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(data: widget.data, item: item))),
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 24), padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(color: AppColors.cardBlack, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.goldDark, width: 3), boxShadow: [BoxShadow(color: AppColors.gold.withOpacity(0.15), blurRadius: 20, spreadRadius: 2)]),
                           child: Column(children: [
-                            AspectRatio(aspectRatio: 1.15, child: CachedNetworkImage(imageUrl: clean(item['image_url']), fit: BoxFit.cover, errorWidget: (_, __, ___) => const Icon(Icons.broken_image, color: AppColors.gold))),
+                            AspectRatio(
+                              aspectRatio: 1.15, 
+                              // 🌟 استخدام Hero للتكبير الانسيابي
+                              child: Hero(
+                                tag: tag,
+                                child: CachedNetworkImage(imageUrl: clean(item['image_url']), fit: BoxFit.cover, errorWidget: (_, __, ___) => const Icon(Icons.broken_image, color: AppColors.gold))
+                              )
+                            ),
                             const SizedBox(height: 8),
                             Text(clean(item['user_name']), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.gold)),
                             if (clean(item['caption']).isNotEmpty) ...[
@@ -311,12 +346,22 @@ class GalleryImagePage extends StatelessWidget {
   const GalleryImagePage({super.key, required this.data, required this.item});
   @override
   Widget build(BuildContext context) {
+    final tag = 'gallery_${item['id']}'; // 🌟 نفس المفتاح لربط الحركة
+
     return Scaffold(
       backgroundColor: AppColors.black,
       appBar: AppBar(title: Text(clean(item['user_name'])), actions: [
         if (data.isAdmin) IconButton(onPressed: () async { await data.deleteGalleryImage(item['id']); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.delete)),
       ]),
-      body: Center(child: InteractiveViewer(child: CachedNetworkImage(imageUrl: clean(item['image_url']), fit: BoxFit.contain, errorWidget: (_, __, ___) => const Icon(Icons.broken_image, size: 80, color: AppColors.gold)))),
+      body: Center(
+        child: InteractiveViewer(
+          // 🌟 استخدام Hero للصورة المكبرة
+          child: Hero(
+            tag: tag,
+            child: CachedNetworkImage(imageUrl: clean(item['image_url']), fit: BoxFit.contain, errorWidget: (_, __, ___) => const Icon(Icons.broken_image, size: 80, color: AppColors.gold))
+          )
+        )
+      ),
     );
   }
 }
