@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -94,6 +95,28 @@ class AppData extends ChangeNotifier {
   BadgeInfo? get currentBadge => getCurrentBadge(currentPoints);
   BadgeInfo? get nextBadge => getNextBadge(currentPoints);
 
+  // ✅ اسم القناة (ما يراه الجميع)
+  String get currentDisplayName {
+    final player = currentPlayer;
+    if (player == null) return currentUserName;
+    final channel = clean(player['channel_name']);
+    return channel.isNotEmpty ? channel : currentUserName;
+  }
+
+  // ✅ اسم أي حساب (channel_name أو name)
+  String displayNameForAccount(dynamic accountId) {
+    if (accountId == null) return '';
+    final id = parseInt(accountId);
+    if (id <= 0) return '';
+    for (final p in players) {
+      if (parseInt(p['account_id']) == id) {
+        final channel = clean(p['channel_name']);
+        return channel.isNotEmpty ? channel : clean(p['name']);
+      }
+    }
+    return '';
+  }
+
   Map<String, dynamic>? get leader {
     if (players.isEmpty) return null;
     final sorted = [...players]; sorted.sort((a, b) => parseInt(b['points']).compareTo(parseInt(a['points']))); return sorted.first;
@@ -117,13 +140,6 @@ class AppData extends ChangeNotifier {
     final id = parseInt(accountId);
     if (id <= 0) return '';
     for (final p in players) { if (parseInt(p['account_id']) == id) return clean(p['avatar_url']); }
-    return '';
-  }
-
-  String avatarForName(String name) {
-    final n = name.trim().toLowerCase();
-    if (n.isEmpty) return '';
-    for (final p in players) { if (clean(p['name']).trim().toLowerCase() == n) return clean(p['avatar_url']); }
     return '';
   }
 
@@ -152,6 +168,7 @@ class AppData extends ChangeNotifier {
     _lastSeenGalleryCount = LocalCache.loadInt('last_seen_gallery_count') ?? 0;
   }
 
+  // ✅ الدخول يستخدم `name` (اسم المدير) فقط
   Future<bool> loginAccount(String name, int accountId) async {
     if (name.trim().isEmpty || accountId <= 0) return false;
     try {
@@ -172,14 +189,12 @@ class AppData extends ChangeNotifier {
     currentAccountId = null; currentUserName = ''; notifyListeners();
   }
 
+  // ✅ تغيير اسم القناة (لا يمس اسم المدير)
   Future<bool> changeMyName(String newName) async {
     if (currentAccountId == null || newName.trim().isEmpty) return false;
     try {
-      await supabase.from('players').update({'name': newName.trim()}).eq('account_id', currentAccountId!);
-      currentUserName = newName.trim();
-      for (final p in players) { if (parseInt(p['account_id']) == currentAccountId) p['name'] = newName.trim(); }
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('mr_otaku_user_name', newName.trim());
+      await supabase.from('players').update({'channel_name': newName.trim()}).eq('account_id', currentAccountId!);
+      for (final p in players) { if (parseInt(p['account_id']) == currentAccountId) p['channel_name'] = newName.trim(); }
       notifyListeners(); return true;
     } catch (e) { return false; }
   }
@@ -249,46 +264,39 @@ class AppData extends ChangeNotifier {
       String? imageUrl;
       if (imageFile != null) imageUrl = await uploadGeneralImage(imageFile, 'comments');
       await supabase.from('post_comments').insert({
-        'post_id': postId, 'account_id': currentAccountId, 'user_name': currentUserName, 'comment_text': text.trim(), 'reply_to': replyTo, 'image_url': imageUrl,
+        'post_id': postId, 'account_id': currentAccountId, 'user_name': currentDisplayName, 'comment_text': text.trim(), 'reply_to': replyTo, 'image_url': imageUrl,
       });
       postCommentCounts[postId] = (postCommentCounts[postId] ?? 0) + 1; notifyListeners(); return true;
     } catch (e) { return false; }
   }
 
-  // ✅ addPost مع حد الفيديوهات
   Future<String?> addPost(String content, File? imageFile, {File? videoFile}) async {
     if (currentAccountId == null) return 'لم يتم تسجيل الدخول.';
     if (content.trim().isEmpty && imageFile == null && videoFile == null) return 'المنشور فارغ.';
-    
+
     if (videoFile != null) {
       final remaining = await getRemainingVideos();
-      if (remaining <= 0) {
-        return 'وصلت للحد الأقصى: 5 فيديوهات شهرياً. يتجدد الشهر القادم.';
-      }
+      if (remaining <= 0) return 'وصلت للحد الأقصى: 5 فيديوهات شهرياً. يتجدد الشهر القادم.';
     }
-    
+
     try {
       String? imageUrl;
       String? videoUrl;
       if (imageFile != null) imageUrl = await uploadGeneralImage(imageFile, 'posts');
       if (videoFile != null) videoUrl = await uploadGeneralVideo(videoFile);
-      
+
       await supabase.from('posts').insert({
         'account_id': currentAccountId,
-        'user_name': currentUserName,
+        'user_name': currentDisplayName,
         'content': content.trim(),
         'image_url': imageUrl,
         'video_url': videoUrl,
       });
-      
+
       if (videoFile != null) await _incrementVideoCount();
-      
       await loadPosts();
       return null;
-    } catch (e) {
-      debugPrint('Add post error: $e');
-      return 'خطأ: $e';
-    }
+    } catch (e) { debugPrint('Add post error: $e'); return 'خطأ: $e'; }
   }
 
   Future<int> getRemainingVideos() async {
@@ -296,14 +304,12 @@ class AppData extends ChangeNotifier {
     try {
       final player = await supabase.from('players').select('videos_this_month, video_month').eq('account_id', currentAccountId!).maybeSingle();
       if (player == null) return 5;
-      
       final currentMonth = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';
       final storedMonth = clean(player['video_month']);
       final count = parseInt(player['videos_this_month']);
-      
       if (storedMonth != currentMonth) return 5;
       return (5 - count).clamp(0, 5);
-    } catch (e) { debugPrint('Get remaining videos error: $e'); return 5; }
+    } catch (e) { return 5; }
   }
 
   Future<void> _incrementVideoCount() async {
@@ -312,19 +318,11 @@ class AppData extends ChangeNotifier {
       final currentMonth = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';
       final player = await supabase.from('players').select('videos_this_month, video_month').eq('account_id', currentAccountId!).maybeSingle();
       if (player == null) return;
-      
       final storedMonth = clean(player['video_month']);
       final currentCount = parseInt(player['videos_this_month']);
       final newCount = (storedMonth == currentMonth) ? currentCount + 1 : 1;
-      
       await supabase.from('players').update({'videos_this_month': newCount, 'video_month': currentMonth}).eq('account_id', currentAccountId!);
-      
-      for (final p in players) {
-        if (parseInt(p['account_id']) == currentAccountId) {
-          p['videos_this_month'] = newCount;
-          p['video_month'] = currentMonth;
-        }
-      }
+      for (final p in players) { if (parseInt(p['account_id']) == currentAccountId) { p['videos_this_month'] = newCount; p['video_month'] = currentMonth; } }
       notifyListeners();
     } catch (e) { debugPrint('Increment video error: $e'); }
   }
@@ -346,7 +344,7 @@ class AppData extends ChangeNotifier {
 
   Future<bool> sendPrivateMessage(int receiverId, String message) async {
     if (currentAccountId == null || message.trim().isEmpty) return false;
-    try { await supabase.from('private_messages').insert({'sender_id': currentAccountId, 'sender_name': currentUserName, 'receiver_id': receiverId, 'message': message.trim()}); return true; } catch (e) { return false; }
+    try { await supabase.from('private_messages').insert({'sender_id': currentAccountId, 'sender_name': currentDisplayName, 'receiver_id': receiverId, 'message': message.trim()}); return true; } catch (e) { return false; }
   }
 
   Future<void> loadUnreadMessagesCount() async {
@@ -373,7 +371,7 @@ class AppData extends ChangeNotifier {
   Future<bool> clearImportantNews() async { if (!_isAdmin) return false; try { await supabase.from('important_news').delete().gte('id', 0); importantNews = ''; importantNewsUpdatedAt = ''; notifyListeners(); return true; } catch (e) { return false; } }
 
   Future<void> loadGallery() async { try { final result = await supabase.from('gallery').select().order('created_at', ascending: false); gallery = List<Map<String, dynamic>>.from(result); } catch (e) { gallery = []; } notifyListeners(); }
-  Future<String?> addGalleryImage(File imageFile, {String caption = ''}) async { if (currentAccountId == null) return 'لم يتم تسجيل الدخول.'; try { final ext = safeExtension(imageFile.path); final path = 'gallery/${currentAccountId}_${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, imageFile); final url = supabase.storage.from('news-images').getPublicUrl(path); await supabase.from('gallery').insert({'account_id': currentAccountId, 'user_name': currentUserName, 'image_url': url, 'caption': caption.trim()}); await loadGallery(); return null; } catch (e) { return 'خطأ: $e'; } }
+  Future<String?> addGalleryImage(File imageFile, {String caption = ''}) async { if (currentAccountId == null) return 'لم يتم تسجيل الدخول.'; try { final ext = safeExtension(imageFile.path); final path = 'gallery/${currentAccountId}_${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, imageFile); final url = supabase.storage.from('news-images').getPublicUrl(path); await supabase.from('gallery').insert({'account_id': currentAccountId, 'user_name': currentDisplayName, 'image_url': url, 'caption': caption.trim()}); await loadGallery(); return null; } catch (e) { return 'خطأ: $e'; } }
   Future<bool> deleteGalleryImage(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('gallery').delete().eq('id', id); await loadGallery(); return true; } catch (e) { return false; } }
 
   Future<bool> updateAvatar(File imageFile) async {
@@ -384,17 +382,12 @@ class AppData extends ChangeNotifier {
   Future<String?> uploadGeneralImage(File file, String folder) async { try { final ext = safeExtension(file.path); final path = '$folder/${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, file); return supabase.storage.from('news-images').getPublicUrl(path); } catch (e) { return null; } }
 
   Future<String?> uploadGeneralVideo(File file) async {
-    try {
-      final ext = safeExtension(file.path);
-      final path = 'posts/video_${DateTime.now().millisecondsSinceEpoch}.$ext';
-      await supabase.storage.from('news-images').upload(path, file);
-      return supabase.storage.from('news-images').getPublicUrl(path);
-    } catch (e) { debugPrint('Upload video error: $e'); return null; }
+    try { final ext = safeExtension(file.path); final path = 'posts/video_${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, file); return supabase.storage.from('news-images').getPublicUrl(path); } catch (e) { debugPrint('Upload video error: $e'); return null; }
   }
 
   Future<void> loadQuizQuestions() async { try { final result = await supabase.from('quiz_questions').select().order('created_at', ascending: true); quizQuestions = List<Map<String, dynamic>>.from(result); } catch (e) { quizQuestions = []; } }
   Future<void> loadQuizResults() async { if (!_isAdmin) return; try { final result = await supabase.from('quiz_results').select().order('created_at', ascending: false); quizResults = List<Map<String, dynamic>>.from(result); notifyListeners(); } catch (e) {} }
-  Future<void> saveQuizResult({required String quizType, required int correct, required int total}) async { try { await supabase.from('quiz_results').insert({'account_id': currentAccountId, 'user_name': currentUserName, 'quiz_type': quizType, 'correct_answers': correct, 'total_questions': total}); } catch (e) {} }
+  Future<void> saveQuizResult({required String quizType, required int correct, required int total}) async { try { await supabase.from('quiz_results').insert({'account_id': currentAccountId, 'user_name': currentDisplayName, 'quiz_type': quizType, 'correct_answers': correct, 'total_questions': total}); } catch (e) {} }
   Future<bool> addQuizQuestion({required String question, required String option1, required String option2, required String option3, required String option4, required int correctOption, String quizType = 'direct', String? imageUrl}) async { if (!_isAdmin) return false; try { await supabase.from('quiz_questions').insert({'question': question.trim(), 'option1': option1.trim(), 'option2': option2.trim(), 'option3': option3.trim(), 'option4': option4.trim(), 'correct_option': correctOption, 'quiz_type': quizType, 'image_url': imageUrl}); await loadQuizQuestions(); return true; } catch (e) { return false; } }
   Future<bool> deleteQuizQuestion(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('quiz_questions').delete().eq('id', id); await loadQuizQuestions(); return true; } catch (e) { return false; } }
 
@@ -410,7 +403,7 @@ class AppData extends ChangeNotifier {
       String? imageUrl;
       if (imageFile != null) imageUrl = await uploadGeneralImage(imageFile, 'comments');
       await supabase.from('news_comments').insert({
-        'news_id': newsId, 'client_id': clientId, 'user_name': userName, 'comment_text': text.trim(), 'reply_to': replyTo, 'image_url': imageUrl,
+        'news_id': newsId, 'client_id': clientId, 'user_name': currentDisplayName, 'comment_text': text.trim(), 'reply_to': replyTo, 'image_url': imageUrl,
       });
       commentCounts[newsId] = (commentCounts[newsId] ?? 0) + 1; notifyListeners(); return true;
     } catch (e) { return false; }
@@ -450,24 +443,14 @@ class AppData extends ChangeNotifier {
 
   Future<void> loadSavedPosts() async {
     if (currentAccountId == null) return;
-    try {
-      final result = await supabase.from('saved_posts').select('post_id').eq('account_id', currentAccountId!);
-      savedPosts = List<Map<String, dynamic>>.from(result);
-    } catch (e) {}
+    try { final result = await supabase.from('saved_posts').select('post_id').eq('account_id', currentAccountId!); savedPosts = List<Map<String, dynamic>>.from(result); } catch (e) {}
   }
-
   bool isPostSaved(dynamic postId) => savedPosts.any((s) => parseInt(s['post_id']) == parseInt(postId));
-
   Future<bool> toggleSavePost(dynamic postId) async {
     if (currentAccountId == null) return false;
     try {
-      if (isPostSaved(postId)) {
-        await supabase.from('saved_posts').delete().eq('post_id', postId).eq('account_id', currentAccountId!);
-        savedPosts.removeWhere((s) => parseInt(s['post_id']) == parseInt(postId));
-      } else {
-        await supabase.from('saved_posts').insert({'post_id': postId, 'account_id': currentAccountId});
-        savedPosts.add({'post_id': postId});
-      }
+      if (isPostSaved(postId)) { await supabase.from('saved_posts').delete().eq('post_id', postId).eq('account_id', currentAccountId!); savedPosts.removeWhere((s) => parseInt(s['post_id']) == parseInt(postId)); }
+      else { await supabase.from('saved_posts').insert({'post_id': postId, 'account_id': currentAccountId}); savedPosts.add({'post_id': postId}); }
       notifyListeners(); return true;
     } catch (e) { return false; }
   }
@@ -486,19 +469,11 @@ class AppData extends ChangeNotifier {
   }
 
   bool isFollowing(int accountId) => followingIds.contains(accountId);
-
   Future<bool> toggleFollow(int accountId) async {
     if (currentAccountId == null || accountId == currentAccountId) return false;
     try {
-      if (followingIds.contains(accountId)) {
-        await supabase.from('follows').delete().eq('follower_id', currentAccountId!).eq('following_id', accountId);
-        followingIds.remove(accountId);
-        myFollowingCount = max(0, myFollowingCount - 1);
-      } else {
-        await supabase.from('follows').insert({'follower_id': currentAccountId, 'following_id': accountId});
-        followingIds.add(accountId);
-        myFollowingCount++;
-      }
+      if (followingIds.contains(accountId)) { await supabase.from('follows').delete().eq('follower_id', currentAccountId!).eq('following_id', accountId); followingIds.remove(accountId); myFollowingCount = max(0, myFollowingCount - 1); }
+      else { await supabase.from('follows').insert({'follower_id': currentAccountId, 'following_id': accountId}); followingIds.add(accountId); myFollowingCount++; }
       notifyListeners(); return true;
     } catch (e) { return false; }
   }
@@ -513,12 +488,7 @@ class AppData extends ChangeNotifier {
 
   Future<bool> submitComplaint({required String targetType, required dynamic targetId, required String reason}) async {
     if (currentAccountId == null || reason.trim().isEmpty) return false;
-    try {
-      await supabase.from('complaints').insert({
-        'reporter_id': currentAccountId, 'reporter_name': currentUserName, 'target_type': targetType, 'target_id': targetId, 'reason': reason.trim(), 'status': 'pending',
-      });
-      return true;
-    } catch (e) { return false; }
+    try { await supabase.from('complaints').insert({'reporter_id': currentAccountId, 'reporter_name': currentDisplayName, 'target_type': targetType, 'target_id': targetId, 'reason': reason.trim(), 'status': 'pending'}); return true; } catch (e) { return false; }
   }
 
   Future<void> loadComplaints() async {
@@ -557,7 +527,7 @@ class AppData extends ChangeNotifier {
   int get totalPollVotes => pollVoteCounts.values.fold(0, (a, b) => a + b);
   double getPollPercentage(dynamic optionId) => totalPollVotes == 0 ? 0 : (pollVoteCounts[optionId] ?? 0) / totalPollVotes * 100;
   List<Map<String, dynamic>> votersForOption(dynamic optionId) => pollVoters.where((v) => v['option_id'] == optionId).toList();
-  Future<bool> votePoll(dynamic optionId) async { if (activePoll == null || hasVotedInActivePoll) return false; try { final clientId = await getClientId(); await supabase.from('poll_votes').insert({'poll_id': activePoll!['id'], 'option_id': optionId, 'client_id': clientId, 'account_id': currentAccountId, 'user_name': currentUserName}); votedPollId = clean(activePoll!['id']); pollVoteCounts[optionId] = (pollVoteCounts[optionId] ?? 0) + 1; pollVoters.add({'option_id': optionId, 'account_id': currentAccountId, 'user_name': currentUserName}); notifyListeners(); return true; } catch (e) { return false; } }
+  Future<bool> votePoll(dynamic optionId) async { if (activePoll == null || hasVotedInActivePoll) return false; try { final clientId = await getClientId(); await supabase.from('poll_votes').insert({'poll_id': activePoll!['id'], 'option_id': optionId, 'client_id': clientId, 'account_id': currentAccountId, 'user_name': currentDisplayName}); votedPollId = clean(activePoll!['id']); pollVoteCounts[optionId] = (pollVoteCounts[optionId] ?? 0) + 1; pollVoters.add({'option_id': optionId, 'account_id': currentAccountId, 'user_name': currentDisplayName}); notifyListeners(); return true; } catch (e) { return false; } }
   Future<bool> createPoll(String question, List<String> options) async { if (!_isAdmin || question.trim().isEmpty || options.length < 2) return false; try { await supabase.from('polls').update({'active': false}).eq('active', true); final poll = await supabase.from('polls').insert({'question': question.trim(), 'active': true}).select().single(); for (int i = 0; i < options.length; i++) { if (options[i].trim().isEmpty) continue; await supabase.from('poll_options').insert({'poll_id': poll['id'], 'option_text': options[i].trim(), 'position': i}); } await loadPoll(); return true; } catch (e) { return false; } }
 
   Future<bool> addNews(String title, String description, {File? imageFile}) async { if (!_isAdmin || title.trim().isEmpty) return false; try { String? imageUrl; if (imageFile != null) { final ext = safeExtension(imageFile.path); final path = 'news_${DateTime.now().millisecondsSinceEpoch}.$ext'; await supabase.storage.from('news-images').upload(path, imageFile); imageUrl = supabase.storage.from('news-images').getPublicUrl(path); } await supabase.from('news').insert({'title': title.trim(), 'description': description.trim(), 'image_url': imageUrl}); await loadData(); return true; } catch (e) { return false; } }
@@ -569,7 +539,7 @@ class AppData extends ChangeNotifier {
 
   Future<bool> addLatest(String title, String description) async { if (!_isAdmin || title.trim().isEmpty) return false; try { await supabase.from('latest').insert({'title': title.trim(), 'description': description.trim()}); await loadData(); return true; } catch (e) { return false; } }
   Future<bool> deleteLatest(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('latest').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; } }
-  Future<bool> sendMessage(String name, String message) async { if (message.trim().isEmpty) return false; try { await supabase.from('messages').insert({'name': currentUserName.trim().isNotEmpty ? currentUserName : name.trim().isEmpty ? 'مستخدم' : name.trim(), 'message': message.trim()}); return true; } catch (e) { return false; } }
+  Future<bool> sendMessage(String name, String message) async { if (message.trim().isEmpty) return false; try { await supabase.from('messages').insert({'name': currentDisplayName, 'message': message.trim()}); return true; } catch (e) { return false; } }
   Future<bool> deleteMessage(dynamic id) async { if (!_isAdmin) return false; try { await supabase.from('messages').delete().eq('id', id); await loadData(); return true; } catch (e) { return false; } }
 
   Future<bool> approvePurchase(Map<String, dynamic> request) async { if (!_isAdmin || request['status'] != 'pending') return false; try { final playerId = request['player_id']; final cost = parseInt(request['cost']); final player = await supabase.from('players').select().eq('id', playerId).maybeSingle(); if (player == null) return false; final points = parseInt(player['points']); if (points < cost) return false; await supabase.from('players').update({'points': points - cost}).eq('id', playerId); await supabase.from('purchase_requests').update({'status': 'approved'}).eq('id', request['id']); await loadData(); return true; } catch (e) { return false; } }
