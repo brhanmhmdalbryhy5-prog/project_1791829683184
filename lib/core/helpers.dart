@@ -4,12 +4,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'colors.dart';
 
-// ✅ احترام إعدادات صوت التطبيق
 Future<void> playClickSound() async {
   try {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('mr_otaku_sound_enabled') ?? true) {
-      await SystemSound.play(SystemSoundType.click);
+      await HapticFeedback.lightImpact();
     }
   } catch (_) {}
 }
@@ -146,7 +145,6 @@ void showSnack(BuildContext context, String message) {
   );
 }
 
-// ✅ الشهادات (محسوبة من البيانات المتاحة)
 class Certificate {
   final String title; final String icon; final bool unlocked; final String description;
   const Certificate({required this.title, required this.icon, required this.unlocked, required this.description});
