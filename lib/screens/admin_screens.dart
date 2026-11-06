@@ -7,6 +7,26 @@ import '../core/colors.dart';
 import '../core/helpers.dart';
 import '../data/app_data.dart';
 
+// ✅ دالة مساعدة لنافذة التأكيد (تستخدم في كل مكان)
+Future<bool> confirmDelete(BuildContext context, String itemName) async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('تأكيد الحذف'),
+      content: Text('هل أنت متأكد من حذف "$itemName"؟\nلا يمكن التراجع عن هذا الإجراء.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          child: const Text('حذف نهائي'),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
+}
+
 // =======================================================
 // 1. لوحة الإدارة الرئيسية
 // =======================================================
@@ -68,7 +88,7 @@ class AdminTile extends StatelessWidget {
 }
 
 // =======================================================
-// 2. إدارة ومراقبة الحسابات (متصل / غير متصل / لم يفتح)
+// 2. إدارة ومراقبة الحسابات (مع تأكيد الحذف)
 // =======================================================
 class ManagePointsPage extends StatefulWidget {
   final AppData data;
@@ -155,9 +175,9 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
                   Color statusColor;
                   String statusText;
 
-                  if (!hasId) { statusColor = Colors.orange; statusText = '⚠️ بدون معرف حساب'; } 
-                  else if (status == 'online') { statusColor = Colors.green; statusText = '🟢 يفتح التطبيق الآن'; } 
-                  else if (status == 'offline') { statusColor = Colors.red; statusText = '🔴 خرج من التطبيق'; } 
+                  if (!hasId) { statusColor = Colors.orange; statusText = '⚠️ بدون معرف حساب'; }
+                  else if (status == 'online') { statusColor = Colors.green; statusText = '🟢 يفتح التطبيق الآن'; }
+                  else if (status == 'offline') { statusColor = Colors.red; statusText = '🔴 خرج من التطبيق'; }
                   else { statusColor = Colors.grey; statusText = '⚪ لم يفتح التطبيق أبداً'; }
 
                   return Card(
@@ -173,7 +193,14 @@ class _ManagePointsPageState extends State<ManagePointsPage> {
                       ]),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                         IconButton(onPressed: () => edit(player), icon: const Icon(Icons.edit, size: 20)),
-                        IconButton(onPressed: () async => await widget.data.deletePlayer(player['id']), icon: const Icon(Icons.delete, color: Colors.red, size: 20)),
+                        // ✅ تأكيد حذف الحساب
+                        IconButton(
+                          onPressed: () async {
+                            final ok = await confirmDelete(context, 'الحساب "${clean(player['name'])}"');
+                            if (ok) await widget.data.deletePlayer(player['id']);
+                          },
+                          icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                        ),
                       ]),
                     ),
                   );
@@ -220,6 +247,8 @@ class _ManageImportantNewsPageState extends State<ManageImportantNewsPage> {
   }
 
   Future<void> clear() async {
+    final confirm = await confirmDelete(context, 'الخبر المهم الحالي');
+    if (!confirm) return;
     final ok = await widget.data.clearImportantNews();
     if (!mounted) return;
     if (ok) { controller.clear(); showSnack(context, 'تم الحذف.'); }
@@ -241,7 +270,7 @@ class _ManageImportantNewsPageState extends State<ManageImportantNewsPage> {
 }
 
 // =======================================================
-// 4. إدارة معرض الصور
+// 4. إدارة معرض الصور (مع تأكيد الحذف)
 // =======================================================
 class ManageGalleryPage extends StatelessWidget {
   final AppData data;
@@ -263,7 +292,16 @@ class ManageGalleryPage extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: Column(children: [
                   Image.network(clean(item['image_url']), width: double.infinity, height: 200, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox(height: 200, child: Icon(Icons.broken_image))),
-                  ListTile(title: Text(clean(item['user_name'])), trailing: IconButton(onPressed: () async => await data.deleteGalleryImage(item['id']), icon: const Icon(Icons.delete, color: Colors.red))),
+                  ListTile(
+                    title: Text(clean(item['user_name'])),
+                    trailing: IconButton(
+                      onPressed: () async {
+                        final ok = await confirmDelete(context, 'هذه الصورة');
+                        if (ok) await data.deleteGalleryImage(item['id']);
+                      },
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                    ),
+                  ),
                 ]),
               );
             },
@@ -312,7 +350,7 @@ class _ManageQuizResultsPageState extends State<ManageQuizResultsPage> {
 }
 
 // =======================================================
-// 6. إدارة الأسئلة
+// 6. إدارة الأسئلة (مع تأكيد الحذف)
 // =======================================================
 class ManageQuizPage extends StatefulWidget {
   final AppData data;
@@ -336,7 +374,13 @@ class _ManageQuizPageState extends State<ManageQuizPage> {
             itemCount: list.length,
             itemBuilder: (_, i) => Card(child: ListTile(
               title: Text(clean(list[i]['question'])),
-              trailing: IconButton(onPressed: () async => await widget.data.deleteQuizQuestion(list[i]['id']), icon: const Icon(Icons.delete)),
+              trailing: IconButton(
+                onPressed: () async {
+                  final ok = await confirmDelete(context, 'هذا السؤال');
+                  if (ok) await widget.data.deleteQuizQuestion(list[i]['id']);
+                },
+                icon: const Icon(Icons.delete),
+              ),
             )),
           );
         },
@@ -390,7 +434,7 @@ class _QuizEditorPageState extends State<QuizEditorPage> {
 }
 
 // =======================================================
-// 7. إدارة الأخبار (مع زر الصورة)
+// 7. إدارة الأخبار (مع زر الصورة + تأكيد الحذف)
 // =======================================================
 class ManageNewsPage extends StatefulWidget {
   final AppData data;
@@ -409,7 +453,7 @@ class _ManageNewsPageState extends State<ManageNewsPage> {
       appBar: AppBar(title: const Text('إدارة الأخبار')),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          t.clear(); d.clear(); _image = null; 
+          t.clear(); d.clear(); _image = null;
           showDialog(
             context: context,
             builder: (context) => StatefulBuilder(
@@ -435,10 +479,10 @@ class _ManageNewsPageState extends State<ManageNewsPage> {
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
                     FilledButton(
-                      onPressed: () async { 
-                        await widget.data.addNews(t.text, d.text, imageFile: _image); 
-                        if (context.mounted) Navigator.pop(context); 
-                      }, 
+                      onPressed: () async {
+                        await widget.data.addNews(t.text, d.text, imageFile: _image);
+                        if (context.mounted) Navigator.pop(context);
+                      },
                       child: const Text('نشر')
                     ),
                   ],
@@ -453,7 +497,16 @@ class _ManageNewsPageState extends State<ManageNewsPage> {
         animation: widget.data,
         builder: (context, _) => ListView.builder(
           itemCount: widget.data.news.length,
-          itemBuilder: (_, i) => Card(child: ListTile(title: Text(clean(widget.data.news[i]['title'])), trailing: IconButton(onPressed: () => widget.data.deleteNews(widget.data.news[i]['id']), icon: const Icon(Icons.delete)))),
+          itemBuilder: (_, i) => Card(child: ListTile(
+            title: Text(clean(widget.data.news[i]['title'])),
+            trailing: IconButton(
+              onPressed: () async {
+                final ok = await confirmDelete(context, 'خبر "${clean(widget.data.news[i]['title'])}"');
+                if (ok) await widget.data.deleteNews(widget.data.news[i]['id']);
+              },
+              icon: const Icon(Icons.delete),
+            ),
+          )),
         ),
       ),
     );
@@ -542,7 +595,7 @@ class _ManagePollPageState extends State<ManagePollPage> {
 }
 
 // =======================================================
-// 10. إدارة كل جديد
+// 10. إدارة كل جديد (مع تأكيد الحذف)
 // =======================================================
 class ManageLatestPage extends StatefulWidget {
   final AppData data;
@@ -563,14 +616,23 @@ class _ManageLatestPageState extends State<ManageLatestPage> {
           TextField(controller: d, decoration: const InputDecoration(labelText: 'الوصف')),
           FilledButton(onPressed: () async { await widget.data.addLatest(t.text, d.text); t.clear(); d.clear(); }, child: const Text('إضافة')),
         ])),
-        Expanded(child: AnimatedBuilder(animation: widget.data, builder: (context, _) => ListView.builder(itemCount: widget.data.latest.length, itemBuilder: (_, i) => ListTile(title: Text(clean(widget.data.latest[i]['title'])), trailing: IconButton(onPressed: () => widget.data.deleteLatest(widget.data.latest[i]['id']), icon: const Icon(Icons.delete)))))),
+        Expanded(child: AnimatedBuilder(animation: widget.data, builder: (context, _) => ListView.builder(itemCount: widget.data.latest.length, itemBuilder: (_, i) => ListTile(
+          title: Text(clean(widget.data.latest[i]['title'])),
+          trailing: IconButton(
+            onPressed: () async {
+              final ok = await confirmDelete(context, 'هذا العنصر');
+              if (ok) await widget.data.deleteLatest(widget.data.latest[i]['id']);
+            },
+            icon: const Icon(Icons.delete),
+          ),
+        )))),
       ]),
     );
   }
 }
 
 // =======================================================
-// 11. إدارة الرسائل
+// 11. إدارة الرسائل (مع تأكيد الحذف)
 // =======================================================
 class ManageMessagesPage extends StatelessWidget {
   final AppData data;
@@ -579,13 +641,23 @@ class ManageMessagesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('رسائل المستخدمين')),
-      body: AnimatedBuilder(animation: data, builder: (context, _) => ListView.builder(itemCount: data.messages.length, itemBuilder: (_, i) => Card(child: ListTile(title: Text(clean(data.messages[i]['name'])), subtitle: Text(clean(data.messages[i]['message'])), trailing: IconButton(onPressed: () => data.deleteMessage(data.messages[i]['id']), icon: const Icon(Icons.delete)))))),
+      body: AnimatedBuilder(animation: data, builder: (context, _) => ListView.builder(itemCount: data.messages.length, itemBuilder: (_, i) => Card(child: ListTile(
+        title: Text(clean(data.messages[i]['name'])),
+        subtitle: Text(clean(data.messages[i]['message'])),
+        trailing: IconButton(
+          onPressed: () async {
+            final ok = await confirmDelete(context, 'رسالة "${clean(data.messages[i]['name'])}"');
+            if (ok) await data.deleteMessage(data.messages[i]['id']);
+          },
+          icon: const Icon(Icons.delete),
+        ),
+      )))),
     );
   }
 }
 
 // =======================================================
-// 12. إدارة طلبات المتجر
+// 12. إدارة طلبات المتجر (مع تأكيد الرفض)
 // =======================================================
 class ManagePurchaseRequestsPage extends StatelessWidget {
   final AppData data;
@@ -602,7 +674,13 @@ class ManagePurchaseRequestsPage extends StatelessWidget {
           subtitle: Text('الحالة: $status'),
           trailing: status == 'pending' ? Row(mainAxisSize: MainAxisSize.min, children: [
             IconButton(onPressed: () => data.approvePurchase(req), icon: const Icon(Icons.check, color: Colors.green)),
-            IconButton(onPressed: () => data.rejectPurchase(req['id']), icon: const Icon(Icons.close, color: Colors.red)),
+            IconButton(
+              onPressed: () async {
+                final ok = await confirmDelete(context, 'رفض هذا الطلب');
+                if (ok) await data.rejectPurchase(req['id']);
+              },
+              icon: const Icon(Icons.close, color: Colors.red),
+            ),
           ]) : null,
         ));
       })),
