@@ -431,7 +431,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(30),
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CreatePostPage())),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CreatePostPage(data: widget.data))),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -507,7 +507,8 @@ class _ProfilePageState extends State<ProfilePage> {
 // 4. صفحة إنشاء منشور (TikTok-style: تخرج فوراً + تنشر في الخلفية)
 // =======================================================
 class CreatePostPage extends StatefulWidget {
-  const CreatePostPage({super.key});
+  final AppData data;
+  const CreatePostPage({super.key, required this.data});
   @override
   State<CreatePostPage> createState() => _CreatePostPageState();
 }
@@ -526,13 +527,8 @@ class _CreatePostPageState extends State<CreatePostPage> {
   }
 
   Future<void> _loadRemaining() async {
-    final data = context.findAncestorWidgetOfExactType<HomePage>()?.data;
-    if (data != null) {
-      final remaining = await data.getRemainingVideos();
-      if (mounted) setState(() { _remainingVideos = remaining; _loadingInfo = false; });
-    } else {
-      if (mounted) setState(() => _loadingInfo = false);
-    }
+    final remaining = await widget.data.getRemainingVideos();
+    if (mounted) setState(() { _remainingVideos = remaining; _loadingInfo = false; });
   }
 
   Future<void> _pickImage() async {
@@ -558,11 +554,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
     }
   }
 
-  /// ✅ النشر الفوري: يخرج من الصفحة فوراً، والرفع يكمل في الخلفية (TikTok style)
-  Future<void> _post(AppData data) async {
+  Future<void> _post() async {
     if (textCtrl.text.trim().isEmpty && _image == null && _video == null) return;
 
-    // 1) حفظ البيانات قبل إغلاق الصفحة
     final content = textCtrl.text;
     final image = _image;
     final video = _video;
@@ -570,97 +564,60 @@ class _CreatePostPageState extends State<CreatePostPage> {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
 
-    // 2) إغلاق الصفحة فوراً
     navigator.pop();
 
-    // 3) عرض "جاري النشر..." في الأسفل
     messenger.showSnackBar(
       SnackBar(
         content: Row(
           children: const [
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            ),
+            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
             SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'جاري النشر...',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
+            Expanded(child: Text('جاري النشر...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
           ],
         ),
         duration: const Duration(minutes: 5),
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.cardBlack,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: ThemeManager.instance.primaryColor.withOpacity(0.5)),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: ThemeManager.instance.primaryColor.withOpacity(0.5))),
       ),
     );
 
-    // 4) الرفع في الخلفية
     try {
-      final error = await data.addPost(content, image, videoFile: video);
-
+      final error = await widget.data.addPost(content, image, videoFile: video);
       messenger.hideCurrentSnackBar();
 
       if (error == null) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 8),
-                Text(
-                  'تم النشر بنجاح!',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green.shade700,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+        messenger.showSnackBar(SnackBar(
+          content: const Row(children: [
+            Icon(Icons.check_circle, color: Colors.white),
+            SizedBox(width: 8),
+            Text('تم النشر بنجاح!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ]),
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
       } else {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    error,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red.shade700,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+        messenger.showSnackBar(SnackBar(
+          content: Row(children: [
+            const Icon(Icons.error, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(error, style: const TextStyle(color: Colors.white))),
+          ]),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
       }
     } catch (e) {
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('❌ خطأ غير متوقع: $e'),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      messenger.showSnackBar(SnackBar(
+        content: Text('❌ خطأ غير متوقع: $e'),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+      ));
     }
   }
 
@@ -672,7 +629,6 @@ class _CreatePostPageState extends State<CreatePostPage> {
 
   @override
   Widget build(BuildContext context) {
-    final data = context.findAncestorWidgetOfExactType<HomePage>()?.data;
     final canPostVideo = _remainingVideos > 0;
 
     return Scaffold(
@@ -718,10 +674,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
                 alignment: Alignment.topRight,
                 children: [
                   Image.file(_image!, height: 200, width: double.infinity, fit: BoxFit.cover),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.red),
-                    onPressed: () => setState(() => _image = null),
-                  ),
+                  IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _image = null)),
                 ],
               ),
             if (_video != null)
@@ -732,31 +685,19 @@ class _CreatePostPageState extends State<CreatePostPage> {
                     height: 200,
                     width: double.infinity,
                     color: Colors.black,
-                    child: const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.videocam, color: AppColors.gold, size: 60),
-                          Text('فيديو 5 ثوان جاهز', style: TextStyle(color: AppColors.gold)),
-                        ],
-                      ),
-                    ),
+                    child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.videocam, color: AppColors.gold, size: 60),
+                      Text('فيديو 5 ثوان جاهز', style: TextStyle(color: AppColors.gold)),
+                    ])),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.red),
-                    onPressed: () => setState(() => _video = null),
-                  ),
+                  IconButton(icon: const Icon(Icons.close, color: Colors.red), onPressed: () => setState(() => _video = null)),
                 ],
               ),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                OutlinedButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.image, size: 18),
-                  label: const Text('صورة'),
-                ),
+                OutlinedButton.icon(onPressed: _pickImage, icon: const Icon(Icons.image, size: 18), label: const Text('صورة')),
                 OutlinedButton.icon(
                   onPressed: canPostVideo ? _pickVideo : null,
                   icon: Icon(Icons.videocam, size: 18, color: canPostVideo ? null : Colors.grey),
@@ -768,9 +709,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () {
-                  if (data != null) _post(data);
-                },
+                onPressed: _post,
                 icon: const Icon(Icons.send),
                 label: const Text('نشر'),
               ),
