@@ -96,7 +96,7 @@ class _HomePageState extends State<HomePage> {
 }
 
 // =======================================================
-// 2. الرئيسية
+// 2. الرئيسية (مع Stories + الاستطلاع + الأخبار + المتصدر)
 // =======================================================
 class HomeTab extends StatefulWidget {
   final AppData data;
@@ -215,6 +215,13 @@ class _HomeTabState extends State<HomeTab> {
                 ),
               ),
             if (widget.data.importantNews.trim().isNotEmpty) const SizedBox(height: 16),
+            // ✅ استطلاع الرأي
+            if (widget.data.activePoll != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: PollCard(data: widget.data),
+              ),
+            if (widget.data.activePoll != null) const SizedBox(height: 16),
             if (widget.data.leader != null)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -235,6 +242,121 @@ class _HomeTabState extends State<HomeTab> {
   }
 }
 
+// =======================================================
+// ✅ بطاقة الاستطلاع
+// =======================================================
+class PollCard extends StatelessWidget {
+  final AppData data;
+  const PollCard({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final voted = data.hasVotedInActivePoll;
+    final poll = data.activePoll!;
+    final options = data.activePollOptions;
+    final primary = ThemeManager.instance.primaryColor;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.poll, color: primary, size: 24),
+              const SizedBox(width: 8),
+              const Text(
+                'استطلاع الرأي',
+                style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: AppColors.gold),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Text(
+              clean(poll['question']),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+            ),
+            const SizedBox(height: 12),
+            ...options.map((option) {
+              final id = option['id'];
+              final voters = data.votersForOption(id);
+              final percentage = data.getPollPercentage(id);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!voted)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            await playClickSound();
+                            await data.votePoll(id);
+                          },
+                          child: Text(clean(option['option_text'])),
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBlack,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: primary.withOpacity(0.4)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Expanded(child: Text(clean(option['option_text']), style: const TextStyle(fontWeight: FontWeight.bold))),
+                              Text('${percentage.toStringAsFixed(0)}%', style: TextStyle(color: primary, fontWeight: FontWeight.bold)),
+                            ]),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: LinearProgressIndicator(
+                                value: percentage / 100,
+                                minHeight: 8,
+                                backgroundColor: Colors.grey.shade800,
+                                valueColor: AlwaysStoppedAnimation(primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (data.isAdmin && voters.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8, top: 4),
+                        child: Text(
+                          'صوّت: ${voters.map((v) => clean(v['user_name'])).join(', ')}',
+                          style: TextStyle(fontSize: 11, color: AppColors.gold.withOpacity(0.7)),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            }),
+            if (voted)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Center(
+                  child: Text(
+                    'إجمالي المصوتين: ${data.totalPollVotes}',
+                    style: TextStyle(fontSize: 12, color: AppColors.gold.withOpacity(0.7)),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =======================================================
+// البحث
+// =======================================================
 class CustomSearchDelegate extends SearchDelegate {
   final AppData data;
   CustomSearchDelegate(this.data);
@@ -835,7 +957,6 @@ class _CommentsPageState extends State<CommentsPage> {
   @override
   void dispose() { controller.dispose(); focusNode.dispose(); super.dispose(); }
 
-  /// ✅ اسم المستخدم: يجرب account_id ثم user_name المخزّن
   String _displayNameFor(Map<String, dynamic> item) {
     final accId = item['account_id'];
     if (accId != null) {
@@ -846,7 +967,6 @@ class _CommentsPageState extends State<CommentsPage> {
     return stored.isEmpty ? 'مستخدم' : stored;
   }
 
-  /// ✅ أيقونة المستخدم: تجرب account_id ثم تبحث عن user_name
   String _avatarFor(Map<String, dynamic> item) {
     final accId = item['account_id'];
     if (accId != null) {
